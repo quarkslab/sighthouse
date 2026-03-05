@@ -1,0 +1,17 @@
+[project]
+name = "sighthouse.client"
+description = "Client sighthouse functionality"
+authors = [
+  {name="Benoît FORGETTE aka MadSquirrel"},
+  {name="Sami BABIGEON aka Fenrisfulsur"}
+]
+license = "MIT"
+version = "1.0.0"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"

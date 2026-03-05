@@ -1,0 +1,4 @@
+#!/bin/sh
+# This pre commit hook unsure that the code formatter is run before commit new code
+#
+make lint && git add -u

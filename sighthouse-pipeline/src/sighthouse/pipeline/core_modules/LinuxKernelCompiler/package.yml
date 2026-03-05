@@ -1,0 +1,5 @@
+name: Linux Kernel Compiler 
+description: Compiler for the Linux Kernel 
+version: 1.0.0
+author: Sighthouse Core Team 
+license: MIT

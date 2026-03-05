@@ -1,0 +1,26 @@
+[project]
+name = "sighthouse.core"
+description = "Core sighthouse functionality"
+authors = [
+  {name="Benoît FORGETTE aka MadSquirrel"},
+  {name="Sami BABIGEON aka Fenrisfulsur"}
+]
+license = "MIT"
+version = "1.0.0"
+dependencies = [
+  "psycopg[binary,pool]>=3.0.0",
+  "minio>=7.2.16",
+  "requests>=2.32.4",
+  "sighthouse-cli>=1.0.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"

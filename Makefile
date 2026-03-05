@@ -1,0 +1,73 @@
+
+default: help
+
+help: # Show help for each of the Makefile recipes.
+	@grep -E '^[a-zA-Z0-9 -]+:.*#'  Makefile | sort | while read -r l; do printf "\033[1;32m$$(echo $$l | cut -f 1 -d':')\033[00m:$$(echo $$l | cut -f 2- -d'#')\n"; done
+
+lint: # Format with black and lint with ruff.
+	@echo "[+] Linting"
+	@if [ ! -d "./venv" ]; then echo "No venv detected. Please use 'make install-dev' first."; exit 1; fi
+	@. ./venv/bin/activate && black .
+
+type-check: # Run mypy.
+	@echo "[+] Type checking"
+	@if [ ! -d "./venv" ]; then echo "No venv detected. Please use 'make install-dev' first."; exit 1; fi
+	@# Only run mypy for now, maybe add pylint/ruff
+	@. ./venv/bin/activate && python -m mypy --exclude build --exclude tests \
+	                                         --check-untyped-defs \
+	                                         --follow-untyped-imports \
+	                                         --config-file sighthouse-core/pyproject.toml \
+	                                         sighthouse-core
+	@# Exclude core modules as well for now
+	@. ./venv/bin/activate && python -m mypy --exclude build --exclude tests --exclude core_modules \
+	                                         --check-untyped-defs \
+	                                         --follow-untyped-imports \
+	                                         --config-file sighthouse-core/pyproject.toml \
+	                                         sighthouse-pipeline
+	@. ./venv/bin/activate && python -m mypy --exclude build --exclude tests \
+	                                         --check-untyped-defs \
+	                                         --follow-untyped-imports \
+	                                         --config-file sighthouse-frontend/pyproject.toml \
+	                                         sighthouse-frontend
+
+test: # Run pytest.
+	@echo "[+] Run tests"
+	@if [ ! -d "./venv" ]; then echo "No venv detected. Please use 'make install-dev' first."; exit 1; fi
+	@# Create tmp directory if it does not exists (it's the case for github CI)
+	@mkdir -p /tmp/
+	@. ./venv/bin/activate && python -m pytest --cov="sighthouse" --cov-report=html \
+	                                         src sighthouse-core sighthouse-pipeline \
+	                                         sighthouse-client sighthouse-frontend
+
+install-hooks: # Install git hooks
+	@echo "Copy git hooks"
+	@if [ -d ".git" ]; then mkdir -p .git/hooks/ && cp ./.hooks/* .git/hooks/; fi
+
+install: # Install sighthouse in a new virtual env.
+	@if [ ! -d "./venv" ]; then python3 -m venv venv; fi
+	@. ./venv/bin/activate && cd sighthouse-cli && pip install .
+	@. ./venv/bin/activate && cd sighthouse-core && pip install .
+	@. ./venv/bin/activate && cd sighthouse-client && pip install .
+	@. ./venv/bin/activate && cd sighthouse-frontend && pip install .
+	@. ./venv/bin/activate && cd sighthouse-pipeline && pip install .
+	@. ./venv/bin/activate && pip install .[all]
+
+install-dev: # Install sighthouse in a new virtual env in debug mode.
+install-dev: install-hooks
+	@if [ ! -d "./venv" ]; then python3 -m venv venv; fi
+	@. ./venv/bin/activate && cd sighthouse-cli && pip install .
+	@. ./venv/bin/activate && cd sighthouse-core && pip install .
+	@. ./venv/bin/activate && cd sighthouse-client && pip install .
+	@. ./venv/bin/activate && cd sighthouse-frontend && pip install .
+	@. ./venv/bin/activate && cd sighthouse-pipeline && pip install .
+	@. ./venv/bin/activate && pip install .[all]
+	@. ./venv/bin/activate && pip install pytest mypy black pytest-cov
+
+clean: # Clean build artefacts
+	@echo "[+] Clean"
+	@find . -name '__pycache__' -type d -exec rm -rf {} +
+	@find . -name '*.class' -type f -delete
+	@find . -name '*.egg-info' -type d -exec rm -rf {} +
+	@$(RM) -rf dist build sighthouse-pipeline/build sighthouse-frontend/build sighthouse-core/build \
+						sighthouse-client/build htmlcov .coverage
+	

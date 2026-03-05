@@ -1,0 +1,8 @@
+version: "3.9"
+services:
+  analyzer:
+    image: ${BASE_URL}/ghidraheadless:latest
+    restart: unless-stopped
+    volumes:
+      - ../:/ghidra_scripts
+      - ./work:/work

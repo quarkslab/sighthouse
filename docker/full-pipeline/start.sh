@@ -1,0 +1,12 @@
+#!/bin/sh
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
+
+mkdir -p "$SCRIPT_DIR/data/postgres"
+mkdir -p "$SCRIPT_DIR/data/redis"
+mkdir -p "$SCRIPT_DIR/data/minio"
+mkdir -p "$SCRIPT_DIR/data/scrapper"
+
+chown -R 1000:1000 "$SCRIPT_DIR/data"
+
+docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d

@@ -1,0 +1,27 @@
+ARG BASE_URL
+
+FROM ${BASE_URL}/ghidraheadless-python3:1.0.0
+
+USER user
+
+COPY --chown=user build /build
+
+
+
+#dev time
+WORKDIR /build/sighthouse-cli
+RUN python3 -m pip install --user  --break-system-packages .
+WORKDIR /build/sighthouse-core
+RUN python3 -m pip install --user  --break-system-packages .
+WORKDIR /build/sighthouse-frontend
+RUN python3 -m pip install --user  --break-system-packages .
+
+
+WORKDIR /build/
+RUN python3 -m pip install --user  --break-system-packages .[frontend]
+
+#RUN rm -rf /build
+
+COPY entrypoint.sh /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

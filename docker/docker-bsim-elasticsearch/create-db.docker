@@ -1,0 +1,9 @@
+ARG BASE_URL
+
+FROM ${BASE_URL}/ghidraheadless:1.0.0
+
+COPY create-db.sh /entrypoint.sh
+
+LABEL version="1.0.0"
+LABEL name="bsim-create-db"
+

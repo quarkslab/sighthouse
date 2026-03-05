@@ -1,0 +1,126 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  PACKAGE_VERSION: "1.0.0"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test-sighthouse:
+    name: Test (Sighthouse)
+    runs-on: ubuntu-latest
+    # Only run on PRs targeting the default branch
+    if: github.event_name == 'pull_request'
+    permissions:
+      packages: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dev dependencies
+        run: make install-dev || true
+        env:
+          DOCKER_IMAGE: ghcr.io/${{ github.repository }}/ghidraheadless-python3-ci:1.0.0
+
+      - name: Run tests
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e GHIDRA_INSTALL_DIR=/ghidra \
+            ghcr.io/${{ github.repository }}/ghidraheadless-python3-ci:1.0.0 \
+            make test
+
+  build:
+    name: Build & Type Check
+    runs-on: ubuntu-latest
+    container:
+      image: python:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dev dependencies
+        run: make install-dev
+
+      - name: Type check
+        run: make type-check
+
+      - name: Run tests
+        run: mkdir -p /tmp && chmod -R +775 /tmp && make test
+
+  docker_generation:
+    name: Build & Publish Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Docker certs
+        run: |
+          sudo mkdir -p /etc/docker/certs.d/${{ secrets.CI_REGISTRY }}
+          echo "${{ secrets.REGISTRY_CA_CERT }}" | sudo tee /etc/docker/certs.d/${{ secrets.CI_REGISTRY }}/ca.crt
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker images
+        run: |
+          cd docker
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Publish Docker images
+        run: |
+          cd docker
+          chmod +x publish.sh
+          ./publish.sh
+
+      - name: Logout from registry
+        run: docker logout ghcr.io
+
+  pages:
+    name: Deploy Docs (GitHub Pages)
+    runs-on: ubuntu-latest
+  
+    permissions:
+      pages: write
+      id-token: write
+  
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+  
+    container:
+      image: python:latest
+  
+    steps:
+      - uses: actions/checkout@v4
+  
+      - name: Install doc dependencies
+        working-directory: doc
+        run: make install
+  
+      - name: Deploy docs
+        working-directory: doc
+        run: make gh-deploy

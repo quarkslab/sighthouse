@@ -1,0 +1,5 @@
+name: Autotools Compiler 
+description: Compiler for Autotools projects
+version: 1.0.0
+author: Sighthouse Core Team 
+license: MIT

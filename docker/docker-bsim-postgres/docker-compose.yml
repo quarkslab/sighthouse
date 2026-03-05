@@ -1,0 +1,37 @@
+version: "3.9"
+services:
+  bsim-postgres:
+    image: ${BASE_URL}/ghidra-bsim-postgres:latest
+    restart: unless-stopped
+    ports:
+      - 5432:5432
+    volumes:
+      - ./ghidra-data:/home/user/ghidra-data
+    healthcheck:
+      test: ["CMD-SHELL", "/ghidra/Ghidra/Features/BSim/pg_is_ready.sh || exit 1 "]
+      retries: 5
+      interval: 30s
+      timeout: 5s
+    networks:
+      - internal_net
+
+  create_bsim_db_postgres:
+    image: ${BASE_URL}/create_bsim_db
+    build:
+      context: ../docker-bsim-elasticsearch/
+      dockerfile: ./create-db.docker
+    command:
+      - "user"
+      - "" 
+      - "bsim-postgres"
+      - "postgresql"
+      - "5432"
+    depends_on:
+      bsim-postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - internal_net
+
+networks:
+  internal_net:

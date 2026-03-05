@@ -1,0 +1,5 @@
+name: uClibc Preprocessor 
+description: Preprocessor for the uClibc library
+version: 1.0.0
+author: Sighthouse Core Team 
+license: MIT

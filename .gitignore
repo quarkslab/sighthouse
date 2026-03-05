@@ -1,0 +1,9 @@
+*.pyc
+__pycache__
+build/
+*.egg-info/
+venv/
+generated/
+*.class
+*.lock
+.cache/

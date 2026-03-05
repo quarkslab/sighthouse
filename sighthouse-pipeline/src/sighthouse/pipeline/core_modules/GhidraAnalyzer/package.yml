@@ -1,0 +1,5 @@
+name: Ghidra Analyzer 
+description: Extract signatures from binaries using Ghidra 
+version: 1.0.0
+author: Sighthouse Core Team 
+license: MIT

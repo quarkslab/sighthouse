@@ -1,0 +1,7 @@
+name: PlatformIo Compiler 
+description: Compiler for PlatformIo projects
+version: 1.0.0
+author: Sighthouse Core Team 
+license: MIT
+requirements:
+- "platformio==6.1.18"

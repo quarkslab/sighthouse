@@ -1,0 +1,56 @@
+[project]
+name = "sighthouse"
+readme = "README.md"
+description = "A tool designed to assist reverse engineers by retrieving information and metadata from programs and identifying similar functions."
+authors = [
+  {name="Benoît FORGETTE aka MadSquirrel"},
+  {name="Sami BABIGEON aka Fenrisfulsur"}
+]
+license = "MIT"
+version = "1.0.0"
+keywords = ["sighthouse"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10"
+]
+
+requires-python = ">= 3.8"
+dependencies = []
+
+[project.optional-dependencies]
+core = [ "sighthouse.core>=1.0.0" ]
+frontend = [
+  "sighthouse.core>=1.0.0",
+  "sighthouse.frontend>=1.0.0"
+]
+pipeline = [
+  "sighthouse.core>=1.0.0",
+  "sighthouse.pipeline>=1.0.0"
+]
+client = [
+  "sighthouse.client>=1.0.0",
+]
+all = [
+  "sighthouse.core>=1.0.0",
+  "sighthouse.frontend>=1.0.0",
+  "sighthouse.pipeline>=1.0.0",
+  "sighthouse.client>=1.0.0"
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "black",
+    "mypy",
+    "pylint"
+]
+
+[project.urls]
+homepage = "https://github.com/quarkslab/sighthouse"
+repository = "https://github.com/quarkslab/sighthouse"
+
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+
