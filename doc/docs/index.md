@@ -64,4 +64,18 @@ of SightHouse is shown below.
 
 *The diagram is clickable*
 
+we share with you some dockers to deploy your own pipeline or frontend or if you want to have a ghidra headless:
+
+```
+docker pull ghcr.io/quarkslab/sighthouse/sighthouse:latest
+docker pull ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:latest
+docker pull ghcr.io/quarkslab/sighthouse/sighthouse-frontend:latest
+
+docker pull ghcr.io/quarkslab/sighthouse/elastic_bsim:latest
+docker pull ghcr.io/quarkslab/sighthouse/ghidra-bsim-postgres:latest
+docker pull ghcr.io/quarkslab/sighthouse/create_bsim_db:latest
+
+docker pull ghcr.io/quarkslab/sighthouse/ghidraheadless:latest
+docker pull ghcr.io/quarkslab/sighthouse/ghidraheadless-python3:latest
+```
 

@@ -102,25 +102,36 @@ jobs:
   pages:
     name: Deploy Docs (GitHub Pages)
     runs-on: ubuntu-latest
-  
+
     permissions:
       pages: write
       id-token: write
-  
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-  
-    container:
-      image: python:latest
-  
+
     steps:
       - uses: actions/checkout@v4
-  
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install doc dependencies
         working-directory: doc
         run: make install
-  
-      - name: Deploy docs
+
+      - name: Build docs
         working-directory: doc
-        run: make gh-deploy
+        run: make build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: doc/public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

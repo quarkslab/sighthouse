@@ -27,10 +27,6 @@ build: check-env
 	@echo "Building documentation"
 	@. venv/bin/activate && mkdocs build --site-dir public
 
-gh-deploy: # Deploy to Github pages
-	@echo "Deploy to Github pages"
-	@. venv/bin/activate && mkdocs gh-deploy --force
-
 serve: # Serve the documentation using local server
 serve: check-env
 	@echo "Serving documentation"
