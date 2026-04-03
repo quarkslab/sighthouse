@@ -14,9 +14,18 @@ different Software Reverse Engineering (SRE) tools.
 In order to run the SightHouse plugin, you will need at least [Ghidra 11.3](https://github.com/NationalSecurityAgency/ghidra/releases/tag/Ghidra_11.3_build)
 as it now come with Python 3 support thought pyGhidra. 
 
-We advise you to launch for a first time ghidra before installed this plugin.
+We advise you to launch for a first time ghidra before installing this plugin.
 
-To install the Ghidra plugin use the following commands:
+The easiest way to install the Ghidra plugin is to install the `sighthouse-client` 
+package and then run the following commands.
+
+```bash
+pip install sighthouse-client
+sighthouse client install ghidra --ghidra-install-dir /path/to/ghidra
+```
+
+It's also possible to install it from the repository:
+
 ```bash
 git clone https://github.com/quarkslab/sighthouse
 cd sighthouse/sighthouse-client
@@ -38,7 +47,16 @@ client dependencies and then ask you where you want to copy your script.
 
 </div>
 
-To install the IDA plugin use the following commands:
+The easiest way to install the IDA plugin is to install the `sighthouse-client` 
+package and then run the following commands.
+
+```bash
+pip install sighthouse-client
+sighthouse client install ida --ida-dir /path/to/ida_dir
+```
+
+It's also possible to install it from the repository:
+
 ```bash
 git clone https://github.com/quarkslab/sighthouse
 cd sighthouse/sighthouse-client
@@ -54,7 +72,16 @@ IDA_DIR=/path/to/ida_dir make install_ida
 
 </div>
 
-To install the Binary Ninja plugin use the following commands:
+The easiest way to install the Binary Ninja plugin is to install
+the `sighthouse-client` package and then run the following commands.
+
+```bash
+pip install sighthouse-client
+sighthouse client install binja
+```
+
+It's also possible to install it from the repository:
+
 ```bash
 git clone https://github.com/quarkslab/sighthouse
 cd sighthouse/sighthouse-client

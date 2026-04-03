@@ -530,3 +530,5 @@ def _safe_extract_tar(tar: "Tarfile", extract_path: Path):  # type: ignore[name-
 
             with src, open(resolved_target, "wb") as dst:
                 dst.write(src.read())
+
+            resolved_target.chmod(member.mode)

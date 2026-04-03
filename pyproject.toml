@@ -6,8 +6,8 @@ authors = [
   {name="Benoît FORGETTE aka MadSquirrel"},
   {name="Sami BABIGEON aka Fenrisfulsur"}
 ]
-license = "MIT"
-version = "1.0.0"
+license = {file="LICENSE"}
+version = "1.0.1"
 keywords = ["sighthouse"]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -18,23 +18,23 @@ requires-python = ">= 3.8"
 dependencies = []
 
 [project.optional-dependencies]
-core = [ "sighthouse.core>=1.0.0" ]
+core = [ "sighthouse.core>=1.0.1" ]
 frontend = [
-  "sighthouse.core>=1.0.0",
-  "sighthouse.frontend>=1.0.0"
+  "sighthouse.core>=1.0.1",
+  "sighthouse.frontend>=1.0.1"
 ]
 pipeline = [
-  "sighthouse.core>=1.0.0",
-  "sighthouse.pipeline>=1.0.0"
+  "sighthouse.core>=1.0.1",
+  "sighthouse.pipeline>=1.0.1"
 ]
 client = [
-  "sighthouse.client>=1.0.0",
+  "sighthouse.client>=1.0.1",
 ]
 all = [
-  "sighthouse.core>=1.0.0",
-  "sighthouse.frontend>=1.0.0",
-  "sighthouse.pipeline>=1.0.0",
-  "sighthouse.client>=1.0.0"
+  "sighthouse.core>=1.0.1",
+  "sighthouse.frontend>=1.0.1",
+  "sighthouse.pipeline>=1.0.1",
+  "sighthouse.client>=1.0.1"
 ]
 
 [dependency-groups]

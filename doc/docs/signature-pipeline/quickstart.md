@@ -6,20 +6,6 @@ run SightHouse without any arguments to get the help:
 ```bash
 $ sighthouse
 
-          _^_
-          |@|
-         =====
-          #::
-          #::     SightHouse v1.0.0
-          #::        by: Fenrisfulsur & Madsquirrels
-          #::
-          #::
-          #::
-        ###::^-..
-                 ^ ~ ~~ ~~ ~ ~ ~
-                  \~~ ~~ ~ ~  ~~~~~
-
-
 usage: sighthouse [-h] [--version] [-d] {package,pipeline,frontend} ...
 
 SightHouse CLI
@@ -70,22 +56,27 @@ services:
   redis:
     image: redis:7
     hostname: redis
-    ports:
-      - "6379:6379"
+    user: "1000:1000"
     volumes:
       - ./data/redis:/data
+    networks:
+      - internal-net
+
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     hostname: minio
+    #ports:
+    #  - "9000:9000"
+    #  - "9001:9001"
     environment:
       - MINIO_ROOT_USER=admin
       - MINIO_ROOT_PASSWORD=password
     command: 'minio server --console-address ":9001" /data'
     volumes:
       - ./data/minio:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    networks:
+      - internal-net
+      - external-net
 
   createbuckets:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
@@ -100,78 +91,164 @@ services:
       /usr/bin/mc anonymous set public dockerminio/uploads;
       exit 0;
       "
+    networks:
+      - internal-net
 
   bsim_postgres:
-    image: ghidra-bsim-postgres:1.0.0
+    image: ghcr.io/quarkslab/sighthouse/ghidra-bsim-postgres:1.0.1
     hostname: bsim_postgres
     volumes:
       - ./data/postgres:/home/user/ghidra-data
     restart: unless-stopped
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "/ghidra/Ghidra/Features/BSim/support/pg_is_ready.sh || exit 1 "]
       retries: 5
       interval: "30s"
       timeout: "5s"
+    networks:
+      - internal-net
 
   create_bsim_db_postgres:
-    image: create_bsim_db:1.0.0
+    image: ghcr.io/quarkslab/sighthouse/create_bsim_db:1.0.1
     command: 'user "" bsim_postgres postgresql 5432'
     depends_on:
       bsim_postgres:
         condition: service_healthy
     restart: no
+    networks:
+      - internal-net
 
-  sighthouse_analyzer:
-    image: sighthouse:1.0.0
+  ghidra_analyzer:
+    image: ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:1.0.1
     restart: unless-stopped
     command: [
-      "src/sighthouse/core_modules/GhidraAnalyzer",   # PACKAGE_PATH
-      "Ghidra Analyzer",                              # ANALYZER_NAME
+      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GhidraAnalyzer",
+      "Ghidra Analyzer",
       "-w", "redis://redis:6379/0",
       "-r", "s3://minio:9000/uploads",
       "-g", "/ghidra",
-      "-b", "postgresql://user@bsim_postgres:5432/bsim"
     ]
+    healthcheck:
+      test: ["CMD-SHELL", "ls /tmp/sighthouse_Ghidra_Analyzer_*.ready 2>/dev/null | grep -q ."]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     depends_on:
+      - bsim_postgres
       - minio
       - redis
+    networks:
+      - internal-net
 
-  sighthouse_compiler:
-    image: sighthouse:1.0.0
+  autotools_compiler:
+    image: ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:1.0.1
     restart: unless-stopped
     command: [
-      "src/sighthouse/core_modules/PlatformIoCompiler",   # PACKAGE_PATH
-      "PlatformIo Compiler",
+      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/AutotoolsCompiler",
+      "Autotools Compiler",
+      "-w", "redis://redis:6379/0",
+      "-r", "s3://minio:9000/uploads",
+      "--strict"
+    ]
+    healthcheck:
+      test: ["CMD-SHELL", "ls /tmp/sighthouse_Autotools_Compiler_*.ready 2>/dev/null | grep -q ."]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      ghidra_analyzer:
+        condition: service_healthy
+    networks:
+      - internal-net
+
+  git_scrapper:
+    image: ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:1.0.1
+    restart: unless-stopped
+    command: [
+      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GitScrapper",
+      "Git Scrapper",
       "-w", "redis://redis:6379/0",
       "-r", "s3://minio:9000/uploads",
     ]
+    healthcheck:
+      test: ["CMD-SHELL", "ls /tmp/sighthouse_Git_Scrapper_*.ready 2>/dev/null | grep -q ."]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
-      - sighthouse_analyzer
-      - minio
-      - redis
+      autotools_compiler:
+        condition: service_healthy
+    networks:
+      - internal-net
+      - external-net
 
-  sighthouse_scrapper:
-    image: sighthouse:1.0.0
-    restart: unless-stopped
+  create_recipe:
+    image: ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:1.0.1
+    entrypoint: >
+      /home/user/.local/bin/sighthouse pipeline -r s3://minio:9000/uploads -w redis://redis:6379/0 start pipeline.yml
     volumes:
-      - ./data/scrapper:/data
-    command: [
-      "src/sighthouse/core_modules/PlatformIoScrapper",   # PACKAGE_PATH
-      "PlatformIo Scrapper",
-      "-w", "redis://redis:6379/0",
-      "-r", "s3://minio:9000/uploads",
-      "-d", "sqlite:////data/scrapper.db"
-    ]
+      - ./data/pipeline.yml:/build/pipeline.yml:ro
     depends_on:
-      - sighthouse_compiler
-      - minio
-      - redis
+      git_scrapper:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - internal-net
+
+networks:
+  internal-net:
+    driver: bridge
+    internal: true  # Blocks host access
+  external-net:
+    driver: bridge
 ```
 
-
 *This setup uses one scrapper, one compiler and one analyzer but it can be easily extended to fit your needs*.
+
+Now we need to feed some jobs into the pipeline. To accomplish this, we've created a custom YAML format, similar to 
+CI/CD pipeline files, which allows you to specify which jobs should run on which workers.
+
+Write the following content into `./data/pipeline.yml`:
+
+```yml
+# pipeline.yml
+name: My pipeline
+description: A simple pipeline
+workers:
+
+  - name: fetch_glibc
+    package: Git Scrapper
+    target: compile_glibc
+    args:
+      repositories:
+        - name: libc
+          url: git://sourceware.org/git/glibc.git
+          branches:
+            - glibc-2.25.90
+
+  # Glibc cannot be compiled without optimization
+  - name: compile_glibc
+    package: Autotools Compiler
+    target: analyzer
+    foreach:
+      - compiler_variants:
+          x86_64-O1:
+            cc: gcc
+            cflags: -O1 -Wno-error=array-parameter
+            configure_extra_args: --disable-werror
+
+  - name: analyzer
+    package: Ghidra Analyzer
+    args:
+      bsim:
+        urls:
+          - postgresql://user@bsim_postgres:5432/bsim
+        min_instructions: 10
+        max_instructions: 0
+```
 
 You can now run the pipeline using `docker compose up -d`. 
 

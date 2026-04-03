@@ -2,6 +2,7 @@ from typing import Dict, List, Tuple
 from tempfile import TemporaryDirectory
 from argparse import ArgumentParser
 from pathlib import Path
+import stat
 import os
 
 from sighthouse.pipeline.worker import Compiler, Job
@@ -16,8 +17,9 @@ class AutotoolsCompiler(Compiler):
     # 3h timeout
     TIMEOUT: int = 3600 * 3
 
-    def __init__(self, worker_url: str, repo_url: str):
+    def __init__(self, worker_url: str, repo_url: str, strict: bool = False):
         super().__init__("Autotools Compiler", worker_url, repo_url)
+        self.strict = strict
 
     def do_work(self, job: Job) -> None:
         variants: List[Tuple[str, Dict[str, str]]] = self.validate_compiler_variants(
@@ -66,6 +68,12 @@ class AutotoolsCompiler(Compiler):
                 if not configure_path.exists():
                     raise Exception("Fail to find configure")
 
+                if not os.access(configure_path, os.X_OK):
+                    # Path is not executable, try to make it
+                    os.chmod(
+                        configure_path, configure_path.stat().st_mode | stat.S_IEXEC
+                    )
+
                 # Build configure command with environment variables
                 env_vars = os.environ.copy()
                 env_vars.update(
@@ -84,7 +92,15 @@ class AutotoolsCompiler(Compiler):
                 )  # Run from build_dir
 
                 # 3. Build with make in BUILD DIR
-                run_process(["make"], cwd=build_dir, timeout=self.TIMEOUT)
+                ret, stdout, err = run_process(
+                    ["make"], cwd=build_dir, timeout=self.TIMEOUT, capture_output=True
+                )
+                if ret != 0 and self.strict:
+                    raise Exception(
+                        "Build failed: stdout:\n{}\nstderr:\n{}".format(
+                            stdout.decode("utf-8"), err.decode("utf-8")
+                        )
+                    )
                 build_files = list(tmpdir.rglob("**/*.o")) + list(
                     tmpdir.rglob("**/*.so")
                 )
@@ -109,9 +125,12 @@ def main():
         required=True,
         help="Url of the repository to upload files",
     )
+    parser.add_argument(
+        "--strict", action="store_true", help="Enable strict mode checking"
+    )
 
     args = parser.parse_args()
-    AutotoolsCompiler(args.worker_url, args.repo_url).run()
+    AutotoolsCompiler(args.worker_url, args.repo_url, strict=args.strict).run()
 
 
 main()

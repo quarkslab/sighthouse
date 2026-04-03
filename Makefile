@@ -1,8 +1,21 @@
+VERSION = 1.0.1
 
 default: help
 
 help: # Show help for each of the Makefile recipes.
 	@grep -E '^[a-zA-Z0-9 -]+:.*#'  Makefile | sort | while read -r l; do printf "\033[1;32m$$(echo $$l | cut -f 1 -d':')\033[00m:$$(echo $$l | cut -f 2- -d'#')\n"; done
+
+bump: # Bump the version .
+	@echo "[+] Bump package version $(VERSION)"
+	@# Update docker version
+	@sed -i "s/VERSION=.*/VERSION=\"$(VERSION)\"/" .env
+	@# Update pyprojects
+	@sed -i "s/version = .*/version = \"$(VERSION)\"/" sighthouse-cli/pyproject.toml 
+	@sed -i "s/version = .*/version = \"$(VERSION)\"/" sighthouse-client/pyproject.toml 
+	@sed -i "s/version = .*/version = \"$(VERSION)\"/" sighthouse-core/pyproject.toml 
+	@sed -i "s/version = .*/version = \"$(VERSION)\"/" sighthouse-frontend/pyproject.toml 
+	@sed -i "s/version = .*/version = \"$(VERSION)\"/" sighthouse-pipeline/pyproject.toml 
+	@sed -i "s/__version__ = .*/__version__ = \"$(VERSION)\"/" src/sighthouse/version.py
 
 lint: # Format with black and lint with ruff.
 	@echo "[+] Linting"
@@ -62,6 +75,10 @@ install-dev: install-hooks
 	@. ./venv/bin/activate && cd sighthouse-pipeline && pip install .
 	@. ./venv/bin/activate && pip install .[all]
 	@. ./venv/bin/activate && pip install pytest mypy black pytest-cov
+
+release:
+	@. ./venv/bin/activate && pip install build wheel
+
 
 clean: # Clean build artefacts
 	@echo "[+] Clean"

@@ -5,8 +5,9 @@ authors = [
   {name="Benoît FORGETTE aka MadSquirrel"},
   {name="Sami BABIGEON aka Fenrisfulsur"}
 ]
-license = "MIT"
-version = "1.0.0"
+
+license = {file="LICENSE"}
+version = "1.0.1"
 dependencies = [
   "psycopg[binary,pool]>=3.0.0",
   "minio>=7.2.16",

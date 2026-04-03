@@ -18,8 +18,9 @@ class uClibcCompiler(Compiler):
     # 3h timeout
     TIMEOUT: int = 3600 * 3
 
-    def __init__(self, worker_url: str, repo_url: str):
+    def __init__(self, worker_url: str, repo_url: str, strict: bool = False):
         super().__init__("uClibc Compiler", worker_url, repo_url)
+        self.strict = strict
 
     def set_arch_config(self, config: Dict[str, str], options: Dict[str, str]) -> None:
         """Set arch-specific configuration options"""
@@ -187,15 +188,19 @@ class uClibcCompiler(Compiler):
                     # Add cross compiler argument
                     args.append("CROSS={}".format(cc.rstrip("gcc")))
 
-                ret, _, _ = run_process(
+                ret, stdout, err = run_process(
                     args,
                     cwd=tmpdir,
                     env=env_vars,
                     capture_output=True,
                     timeout=self.TIMEOUT,
                 )
-                if ret != 0:
-                    raise Exception("Build failed")
+                if ret != 0 and self.strict:
+                    raise Exception(
+                        "Build failed: stdout:\n{}\nstderr:\n{}".format(
+                            stdout.decode("utf-8"), err.decode("utf-8")
+                        )
+                    )
 
                 build_files = list(tmpdir.rglob("**/*.o")) + list(
                     tmpdir.rglob("**/*.so")
@@ -221,9 +226,12 @@ def main():
         required=True,
         help="Url of the repository to upload files",
     )
+    parser.add_argument(
+        "--strict", action="store_true", help="Enable strict mode checking"
+    )
 
     args = parser.parse_args()
-    uClibcCompiler(args.worker_url, args.repo_url).run()
+    uClibcCompiler(args.worker_url, args.repo_url, strict=args.strict).run()
 
 
 main()

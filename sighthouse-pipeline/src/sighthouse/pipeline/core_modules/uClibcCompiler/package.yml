@@ -1,5 +1,5 @@
 name: uClibc Compiler 
 description: Compiler for the uClibc library
-version: 1.0.0
+version: 1.0.1
 author: Sighthouse Core Team 
 license: MIT

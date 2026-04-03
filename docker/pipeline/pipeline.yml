@@ -1,0 +1,259 @@
+# pipeline.yml
+name: Full Pipeline
+description: Full pipeline running all developed modules
+workers:
+
+  # --- PlatformIO ---
+  - name: scrap_platformio
+    package: PlatformIo Scrapper
+    target: preprocess_platformio
+
+  - name: preprocess_platformio
+    package: PlatformIo Preprocessor
+    target: compile_platformio
+
+  - name: compile_platformio
+    package: PlatformIo Compiler
+    target: analyzer
+
+  # --- Linux Kernel ---
+  - name: fetch_kernel
+    package: Git Scrapper
+    target: kernel_compiler
+    args:
+      repositories:
+        - name: linux
+          url: https://github.com/torvalds/linux/
+          branches:
+            # - v2.6.11 This branch does not have a commit link to it
+            - v2.6.12
+            - v2.6.13
+            - v2.6.14
+            - v2.6.15
+            - v2.6.16
+            - v2.6.17
+
+  - name: kernel_compiler
+    package: Linux Kernel Compiler
+    target: analyzer
+    foreach:
+      - compiler_variants:
+          x86_64-O0:
+            cc: gcc
+            cflags: -O0
+      - compiler_variants:
+          arm-O0:
+            cc: arm-linux-gnueabi-gcc
+            cflags: -O0
+      - compiler_variants:
+          mipsel-O0:
+            cc: mipsel-linux-gnu-gcc
+            cflags: -O0
+      - compiler_variants:
+          mips-O0:
+            cc: mips-linux-gnu-gcc
+            cflags: -O0
+      - compiler_variants:
+          aarch64-O0:
+            cc: aarch64-linux-gnu-gcc
+            cflags: -O0
+      - compiler_variants:
+          x86_64-O1:
+            cc: gcc
+            cflags: -O1
+      - compiler_variants:
+          arm-O1:
+            cc: arm-linux-gnueabi-gcc
+            cflags: -O1
+
+  # --- uClibc ---
+  # uclibc cannot be compiled without optimization
+  - name: fetch_uclibc
+    package: Git Scrapper
+    target: uclibc_preprocessor
+    args:
+      repositories:
+        - name: uclibc
+          url: https://github.com/wbx-github/uclibc-ng/
+          branches:
+            - v1.0.0
+            - v1.0.1
+            - v1.0.10
+            - v1.0.11
+            - v1.0.12
+            - v1.0.13
+            - v1.0.14
+            - v1.0.15
+            - v1.0.16
+            - v1.0.17
+            - v1.0.18
+            - v1.0.19
+            - v1.0.2
+            - v1.0.20
+            - v1.0.21
+            - v1.0.22
+            - v1.0.23
+            - v1.0.24
+            - v1.0.25
+
+
+  - name: uclibc_preprocessor
+    package: uClibc Preprocessor
+    target: uclibc_compiler
+
+  - name: uclibc_compiler
+    package: uClibc Compiler
+    target: analyzer
+    foreach:
+      - compiler_variants:
+          x86_64-O1:
+            cc: gcc
+            cflags: -O1
+      - compiler_variants:
+          arm-O1:
+            cc: arm-linux-gnueabi-gcc
+            cflags: -O1
+      - compiler_variants:
+          mipsel-O1:
+            cc: mipsel-linux-gnu-gcc
+            cflags: -O1
+      - compiler_variants:
+          mips-O1:
+            cc: mips-linux-gnu-gcc
+            cflags: -O1
+
+  # --- glibc ---
+  # glibc cannot be compiled without optimization
+  - name: fetch_glibc
+    package: Git Scrapper
+    target: compile_glibc
+    args:
+      repositories:
+        - name: libc
+          url: git://sourceware.org/git/glibc.git
+          branches:
+            - glibc-1.09
+            - glibc-1.90
+            - glibc-1.91
+            - glibc-1.92
+            - glibc-1.93
+            - glibc-2.0.100
+            - glibc-2.0.101
+            - glibc-2.0.103
+            - glibc-2.0.106
+            - glibc-2.0.112
+            - glibc-2.0.2
+            - glibc-2.0.4
+            - glibc-2.0.5
+            - glibc-2.0.5b
+            - glibc-2.0.6
+            - glibc-2.0.92
+            - glibc-2.0.95
+            - glibc-2.0.96
+            - glibc-2.0.97
+            - glibc-2.0.98
+
+  - name: compile_glibc
+    package: Autotools Compiler
+    target: analyzer
+    foreach:
+      - compiler_variants:
+          x86_64-O1:
+            cc: gcc
+            cflags: -O1
+      - compiler_variants:
+          arm-O1:
+            cc: arm-linux-gnueabi-gcc
+            cflags: -O1
+            configure_extra_args: --host=arm-linux-gnueabi
+      - compiler_variants:
+          mipsel-O1:
+            cc: mipsel-linux-gnu-gcc
+            cflags: -O1
+            configure_extra_args: --host=mips-linux-gnu
+      - compiler_variants:
+          mips-O1:
+            cc: mips-linux-gnu-gcc
+            cflags: -O1
+            configure_extra_args: --host=mips-linux-gnu
+      - compiler_variants:
+          aarch64-O1:
+            cc: aarch64-linux-gnu-gcc
+            cflags: -O1
+            configure_extra_args: --host=aarch64-linux-gnu
+
+  # --- openssl ---
+  - name: fetch_openssl
+    package: Git Scrapper
+    target: compile_openssl
+    args:
+      repositories:
+        - name: openssl
+          url: https://github.com/openssl/openssl
+          branches:
+            - OpenSSL_0_9_1c
+            - OpenSSL_0_9_2b
+            - OpenSSL_0_9_3
+            - OpenSSL_0_9_3a
+            - OpenSSL_0_9_4
+            - OpenSSL_0_9_5
+            - OpenSSL_0_9_5a
+            - OpenSSL_0_9_6
+            - OpenSSL_0_9_6a
+            - OpenSSL_0_9_6b
+            - OpenSSL_0_9_6c
+            - OpenSSL_0_9_6d
+            - OpenSSL_0_9_6e
+            - OpenSSL_0_9_6f
+            - OpenSSL_0_9_6g
+            - OpenSSL_0_9_6h
+            - OpenSSL_0_9_6i
+
+  - name: compile_openssl
+    package: Autotools Compiler
+    target: analyzer
+    foreach:
+      - compiler_variants:
+          x86_64-O0:
+            cc: gcc
+            cflags: -O0
+      - compiler_variants:
+          arm-O0:
+            cc: arm-linux-gnueabi-gcc
+            cflags: -O0
+            configure_extra_args: linux-armv4
+      - compiler_variants:
+          mipsel-O0:
+            cc: mipsel-linux-gnu-gcc
+            cflags: -O0
+            configure_extra_args: linux-mips32
+      - compiler_variants:
+          mips-O0:
+            cc: mips-linux-gnu-gcc
+            cflags: -O0
+            configure_extra_args: linux-mips32
+      - compiler_variants:
+          aarch64-O0:
+            cc: aarch64-linux-gnu-gcc
+            cflags: -O0
+            configure_extra_args: linux-aarch64
+      - compiler_variants:
+          arm-O1:
+            cc: arm-linux-gnueabi-gcc
+            cflags: -O1
+            configure_extra_args: linux-armv4
+      - compiler_variants:
+          mipsel-O1:
+            cc: mipsel-linux-gnu-gcc
+            cflags: -O1
+            configure_extra_args: linux-mips32
+
+  # --- Analyzer ---
+  - name: analyzer
+    package: Ghidra Analyzer
+    args:
+      bsim:
+        urls:
+          - postgresql://user@bsim_postgres:5432/bsim
+        min_instructions: 10
+        max_instructions: 0

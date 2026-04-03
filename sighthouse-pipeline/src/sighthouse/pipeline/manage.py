@@ -1,6 +1,7 @@
 """Manager for the SightHouse pipeline"""
 
 from typing import Any, Set, List, Dict, Optional, Union
+from base64 import b64decode
 from logging import Logger
 from pathlib import Path
 import builtins
@@ -330,6 +331,56 @@ class PipelineManager:
 
         return {"workers": workers}
 
+    def _get_processing_jobs(self) -> List[Dict[str, Any]]:
+        """Return the jobs hidden in the redis queue, waiting to be processed.
+        This method is a hack as celery does not report all the jobs in the queue,
+        only the ones took by workers
+        """
+
+        if not hasattr(self._celery_app.backend, "redis"):
+            raise NotImplementedError(
+                "This method is only implemented for redis backend"
+            )
+
+        # Query worker metadata
+        inspect = self._celery_app.control.inspect()
+
+        # Build a set of all the queues
+        queues = inspect.active_queues()
+        names: Set[str] = set()
+        # Create a set of all the queues used by workers
+        for worker, payload in queues.items():
+            names = names.union(set(queue["name"] for queue in payload))
+
+        # Now iterate over all of them using redis command as we know it's the backend
+        for queue in names:
+            count = self._celery_app.backend.client.llen(queue)
+            self._logger.debug(f"Queue '{queue}' has {count} task")
+            if count <= 0:
+                continue
+
+            jobs = []
+            # Number of jobs we query from redis
+            batch_size = 1000
+            for i in range(0, count, batch_size):
+                self._logger.debug(f"Processing {batch_size} jobs out of {count}")
+                tasks = self._celery_app.backend.client.lrange(
+                    queue, i, min(i + batch_size - 1, count - 1)
+                )
+                for task in tasks:
+                    # By default tasks are encoded either as JSON, RAW or Pickle
+                    decoded = self._celery_app.backend.decode(task)
+                    # "Decoded" task still have their payload encoded as base64
+                    encoding = decoded.get("properties", {}).get("body_encoding")
+                    if encoding != "base64":
+                        self._logger.warning(f"Unsupported encoding '{encoding}'")
+                    else:
+                        # Expecting an JSON array of [input, data, callbacks]
+                        job_dict = json.loads(b64decode(decoded.get("body")))[1]
+                        jobs.append(job_dict.get("job_dict"))
+
+        return jobs
+
     def stats(self, state: Optional[str] = None, package: Optional[str] = None) -> dict:
         """Return stats about the pipeline. Optionnaly filter by state and/or package is supplied.
 
@@ -338,20 +389,23 @@ class PipelineManager:
         {
           "Package 1": {
             "success": 165,
+            "processing": 10,
             "failure": 0
           },
           "Package 2": {
             "success": 5,
+            "processing": 0,
             "failure": 1
           }
         }
         ```
         """
         if state is not None and (
-            not isinstance(state, str) or state not in ["success", "failed"]
+            not isinstance(state, str)
+            or state not in ["success", "failed", "processing"]
         ):
             raise ValueError(
-                "Invalid state. Expecting either 'success', 'failed' or None"
+                "Invalid state. Expecting either 'success', 'failed', 'processing' or None"
             )
 
         if package is not None and not isinstance(package, str):
@@ -361,10 +415,10 @@ class PipelineManager:
         if not state or state == "success":
             # List success
             for path in list(map(Path, self._repo.list_directory("success/"))):
-                worker = path.name
+                worker: Optional[str] = path.name
                 if package is None or package == worker:
                     count = len(self._repo.list_directory(str(path) + "/"))
-                    stats[worker] = {"success": count, "failure": 0}
+                    stats[worker] = {"success": count, "failure": 0, "processing": 0}
 
         if not state or state == "failed":
             # List failure
@@ -373,12 +427,24 @@ class PipelineManager:
                 if package is None or package == worker:
                     count = len(self._repo.list_directory(str(path) + "/"))
                     if worker in stats:
-                        stats[worker] = {
-                            "success": stats[worker]["success"],
-                            "failure": count,
-                        }
+                        stats[worker].update({"failure": count})
                     else:
-                        stats[worker] = {"success": 0, "failure": count}
+                        stats[worker] = {
+                            "success": 0,
+                            "failure": count,
+                            "processing": 0,
+                        }
+
+        if not state or state == "processing":
+            # List processing
+            for job in self._get_processing_jobs():
+                worker = Job.from_dict(job).package
+                if worker in stats:
+                    stats[worker].update(
+                        {"processing": stats[worker].get("processing", 0) + 1}
+                    )
+                else:
+                    stats[worker] = {"success": 0, "failure": 0, "processing": 1}
 
         return stats
 
@@ -391,10 +457,11 @@ class PipelineManager:
         max_jobs: int = -1,
     ):
         if state is not None and (
-            not isinstance(state, str) or state not in ["success", "failed"]
+            not isinstance(state, str)
+            or state not in ["success", "failed", "processing"]
         ):
             raise ValueError(
-                "Invalid state. Expecting either 'success', 'failed' or None"
+                "Invalid state. Expecting either 'success', 'failed', 'processing' or None"
             )
 
         if package is not None and not isinstance(package, str):
@@ -406,41 +473,52 @@ class PipelineManager:
         if group_by is not None and not isinstance(group_by, str):
             raise TypeError("Invalid group_by type")
 
-        jobs = []
+        jobs_files = []
+        processing_jobs = []
         if not state or state == "success":
             # List success
             for path in list(map(Path, self._repo.list_directory("success/"))):
                 worker = path.name
                 if package is None or package == worker:
-                    jobs += self._repo.list_directory(str(path) + "/")
+                    jobs_files += self._repo.list_directory(str(path) + "/")
 
         if not state or state == "failed":
             # List failure
             for path in list(map(Path, self._repo.list_directory("failed/"))):
                 worker = path.name
                 if package is None or package == worker:
-                    jobs += self._repo.list_directory(str(path) + "/")
+                    jobs_files += self._repo.list_directory(str(path) + "/")
+
+        if not state or state == "processing":
+            # List processing
+            processing_jobs = self._get_processing_jobs()
 
         if filters is not None:
             # Filter is supplied, we have to parse the jobs
-            def apply_filter(job: str):
+            def apply_filter(data: dict) -> bool:
                 self._logger.warning(
                     "Warning: Using 'eval' for filtering jobs can execute arbitrary "
                     "code on your machine. Proceed with caution!"
                 )
-                data = json.loads(self._repo.get_file(job))
                 result = eval(filters, {"__builtins__": None, **data}, {})
                 if not isinstance(result, bool):
                     raise TypeError("Filter did not returned a boolean value")
+
                 return result
 
-            jobs = list(builtins.filter(apply_filter, jobs))
+            jobs_files = list(
+                builtins.filter(
+                    lambda job: apply_filter(json.loads(self._repo.get_file(job))),
+                    jobs_files,
+                )
+            )
+            processing_jobs = list(builtins.filter(apply_filter, processing_jobs))
 
         if group_by:
             group: Dict[str, Any] = {}
+
             # Group by key
-            for job in jobs:
-                data = json.loads(self._repo.get_file(job))
+            def apply_group_by(data: dict) -> None:
                 if group_by not in data.keys():
                     raise ValueError(f"Cannot group jobs by '{group_by}'")
 
@@ -449,6 +527,15 @@ class PipelineManager:
                     group[value]["count"] += 1
                 else:
                     group[value] = {"value": value, "count": 1}
+
+            # Group by for files
+            for job in jobs_files:
+                data = json.loads(self._repo.get_file(job))
+                apply_group_by(data)
+
+            # Group by for processing jobs
+            for j in processing_jobs:
+                apply_group_by(j)
 
             if max_jobs < 0:
                 max_jobs = len(group)
@@ -460,10 +547,13 @@ class PipelineManager:
                 )
 
         else:
+            total_jobs = jobs_files + list(
+                map(lambda e: e.get("job_metadata", {}).get("id"), processing_jobs)
+            )
             if max_jobs < 0:
-                max_jobs = len(jobs)
+                max_jobs = len(total_jobs)
             # List job
-            for job in jobs[0:max_jobs]:
+            for job in total_jobs[0:max_jobs]:
                 print(Path(job).stem)
 
     def restart_jobs(self, jobs: List[str]) -> bool:
@@ -482,6 +572,7 @@ class PipelineManager:
         job_uuids = {Path(e).stem: e for e in remote_jobs if Path(e).stem in jobs}
         missing = list(filter(lambda e: e not in job_uuids, jobs))
         if len(missing) > 0:
+            # Handle defacto pending jobs as they should not be allowed to restart
             raise Exception(f"Missing at least one job: '{missing[0]}'")
 
         # Restart each job

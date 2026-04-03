@@ -16,8 +16,9 @@ class LinuxKernelCompiler(Compiler):
     # 4h timeout
     TIMEOUT: int = 3600 * 4
 
-    def __init__(self, worker_url: str, repo_url: str):
+    def __init__(self, worker_url: str, repo_url: str, strict: bool = False):
         super().__init__("Linux Kernel Compiler", worker_url, repo_url)
+        self.strict = strict
 
     def do_work(self, job: Job) -> None:
         variants: List[Tuple[str, Dict[str, str]]] = self.validate_compiler_variants(
@@ -71,17 +72,25 @@ class LinuxKernelCompiler(Compiler):
                     cwd=tmpdir,
                     env=env_vars,
                     timeout=self.TIMEOUT,
+                    capture_output=True,
                 )
                 if ret != 0:
                     raise Exception("Fail to configure kernel build")
 
                 # 2. Build with make
-                run_process(
+                ret, stdout, err = run_process(
                     [["yes", '"'], args + ["all"]],
                     cwd=tmpdir,
                     env=env_vars,
                     timeout=self.TIMEOUT,
+                    capture_output=True,
                 )
+                if ret != 0 and self.strict:
+                    raise Exception(
+                        "Build failed: stdout:\n{}\nstderr:\n{}".format(
+                            stdout.decode("utf-8"), err.decode("utf-8")
+                        )
+                    )
                 build_files = list(tmpdir.rglob("**/*.o")) + list(
                     tmpdir.rglob("**/vmlinux")
                 )
@@ -106,9 +115,12 @@ def main():
         required=True,
         help="Url of the repository to upload files",
     )
+    parser.add_argument(
+        "--strict", action="store_true", help="Enable strict mode checking"
+    )
 
     args = parser.parse_args()
-    LinuxKernelCompiler(args.worker_url, args.repo_url).run()
+    LinuxKernelCompiler(args.worker_url, args.repo_url, strict=args.strict).run()
 
 
 main()
