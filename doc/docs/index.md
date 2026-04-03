@@ -8,6 +8,10 @@ collection for function extraction, SightHouse automatically scrapes, compiles, 
 new projects. This process allows us to continuously enhance and expand the database with new
 signatures.
 
+<video autoplay muted>
+  <source src="assets/images/demo-pwn2own.mp4" type="video/mp4"/>
+</video>
+
 ## What are you looking for ? 
 
 You either ended up on your own or somebody <s>forced</s> incited you to test SightHouse. In any case, you 

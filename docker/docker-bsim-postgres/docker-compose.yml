@@ -1,7 +1,7 @@
 version: "3.9"
 services:
   bsim-postgres:
-    image: ${BASE_URL}/ghidra-bsim-postgres:latest
+    image: ${BASE_URL}/ghidra-bsim-postgres:1.0.1
     restart: unless-stopped
     ports:
       - 5432:5432
@@ -16,7 +16,7 @@ services:
       - internal_net
 
   create_bsim_db_postgres:
-    image: ${BASE_URL}/create_bsim_db
+    image: ${BASE_URL}/create_bsim_db:1.0.1
     build:
       context: ../docker-bsim-elasticsearch/
       dockerfile: ./create-db.docker

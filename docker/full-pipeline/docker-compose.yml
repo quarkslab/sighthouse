@@ -36,7 +36,7 @@ services:
       "
 
   bsim_postgres:
-    image: ghidra-bsim-postgres:1.0.0
+    image: ${BASE_URL}/ghidra-bsim-postgres:1.0.1
     hostname: bsim_postgres
     volumes:
       - ./data/postgres:/home/user/ghidra-data
@@ -50,7 +50,7 @@ services:
       timeout: "5s"
 
   create_bsim_db_postgres:
-    image: create_bsim_db:1.0.0 
+    image: ${BASE_URL}/create_bsim_db:1.0.1 
     command: 'user "" bsim_postgres postgresql 5432'
     depends_on:
       bsim_postgres:
@@ -58,11 +58,11 @@ services:
     restart: no
 
   ghidra_analyzer1:
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.0
+    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GhidraAnalyzer",   # PACKAGE_PATH
-      "Ghidra Analyzer",                              # ANALYZER_NAME
+      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GhidraAnalyzer",
+      "Ghidra Analyzer",
       "-w", "redis://redis:6379/0",
       "-r", "s3://minio:9000/uploads",
       "-g", "/ghidra",
@@ -73,11 +73,11 @@ services:
       - redis
 
   ghidra_analyzer2:
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.0
+    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GhidraAnalyzer",   # PACKAGE_PATH
-      "Ghidra Analyzer",                              # ANALYZER_NAME
+      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GhidraAnalyzer",
+      "Ghidra Analyzer",
       "-w", "redis://redis:6379/0",
       "-r", "s3://minio:9000/uploads",
       "-g", "/ghidra",
@@ -88,10 +88,10 @@ services:
       - redis
 
   autotools_compiler1: 
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.0
+    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/AutotoolsCompiler",   # PACKAGE_PATH
+      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/AutotoolsCompiler",
       "Autotools Compiler",
       "-w", "redis://redis:6379/0",
       "-r", "s3://minio:9000/uploads",
@@ -101,10 +101,10 @@ services:
       - ghidra_analyzer2
 
   autotools_compiler2: 
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.0
+    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/AutotoolsCompiler",   # PACKAGE_PATH
+      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/AutotoolsCompiler",
       "Autotools Compiler",
       "-w", "redis://redis:6379/0",
       "-r", "s3://minio:9000/uploads",
@@ -114,10 +114,10 @@ services:
       - ghidra_analyzer2
 
   uclibc_compiler: 
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.0
+    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/uClibcCompiler",   # PACKAGE_PATH
+      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/uClibcCompiler",
       "uClibc Compiler",
       "-w", "redis://redis:6379/0",
       "-r", "s3://minio:9000/uploads",
@@ -127,10 +127,10 @@ services:
       - ghidra_analyzer2
 
   uclibc_preprocessor: 
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.0
+    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/uClibcPreprocessor",   # PACKAGE_PATH
+      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/uClibcPreprocessor",
       "uClibc Preprocessor",
       "-w", "redis://redis:6379/0",
       "-r", "s3://minio:9000/uploads",
@@ -139,10 +139,10 @@ services:
       - uclibc_compiler
 
   kernel_compiler1:
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.0
+    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/LinuxKernelCompiler",   # PACKAGE_PATH
+      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/LinuxKernelCompiler",
       "Linux Kernel Compiler",
       "-w", "redis://redis:6379/0",
       "-r", "s3://minio:9000/uploads",
@@ -152,10 +152,10 @@ services:
       - ghidra_analyzer2
 
   kernel_compiler2:
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.0
+    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/LinuxKernelCompiler",   # PACKAGE_PATH
+      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/LinuxKernelCompiler",
       "Linux Kernel Compiler",
       "-w", "redis://redis:6379/0",
       "-r", "s3://minio:9000/uploads",
@@ -165,10 +165,10 @@ services:
       - ghidra_analyzer2
 
   git_scrapper: 
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.0
+    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GitScrapper",   # PACKAGE_PATH
+      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GitScrapper",
       "Git Scrapper",
       "-w", "redis://redis:6379/0",
       "-r", "s3://minio:9000/uploads",

@@ -1,0 +1,34 @@
+# pipeline.yml
+name: My pipeline
+description: A simple pipeline
+workers:
+
+  - name: fetch_glibc
+    package: Git Scrapper
+    target: compile_glibc
+    args:
+      repositories:
+        - name: libc
+          url: git://sourceware.org/git/glibc.git
+          branches:
+            - glibc-2.25.90
+
+  # Glibc cannot be compiled without optimization
+  - name: compile_glibc
+    package: Autotools Compiler
+    target: analyzer
+    foreach:
+      - compiler_variants:
+          x86_64-O1:
+            cc: gcc
+            cflags: -O1 -Wno-error=array-parameter
+            configure_extra_args: --disable-werror
+
+  - name: analyzer
+    package: Ghidra Analyzer
+    args:
+      bsim:
+        urls:
+          - postgresql://user@bsim_postgres:5432/bsim
+        min_instructions: 10
+        max_instructions: 0

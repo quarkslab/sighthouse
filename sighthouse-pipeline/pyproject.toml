@@ -5,8 +5,9 @@ authors = [
   {name="Benoît FORGETTE aka MadSquirrel"},
   {name="Sami BABIGEON aka Fenrisfulsur"}
 ]
-license = "MIT"
-version = "1.0.0"
+
+license = {file="LICENSE"}
+version = "1.0.1"
 dependencies = [
   "celery>=5.5.3", # frontend/pipeline
   "redis>=6.3.0", # nowhere??

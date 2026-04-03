@@ -1,6 +1,6 @@
 ARG BASE_URL
 
-FROM ${BASE_URL}/ghidraheadless:1.0.0
+FROM ${BASE_URL}/ghidraheadless:1.0.1
 
 USER 0
 RUN apt-get -y update && apt-get install --no-install-recommends -y libsqlite3-0 \

@@ -6,20 +6,6 @@ run SightHouse without any arguments to get the help:
 ```bash
 $ sighthouse
 
-          _^_
-          |@|
-         =====
-          #::
-          #::     SightHouse v1.0.0
-          #::        by: Fenrisfulsur & Madsquirrels
-          #::
-          #::
-          #::
-        ###::^-..
-                 ^ ~ ~~ ~~ ~ ~ ~
-                  \~~ ~~ ~ ~  ~~~~~
-
-
 usage: sighthouse [-h] [--version] [-d] {package,pipeline,frontend} ...
 
 SightHouse CLI
@@ -81,51 +67,35 @@ simplify this process, we provided a Docker Compose file, allowing you to deploy
 services:
   redis:
     image: redis:7
-    hostname: redis
     volumes:
       - ./data/redis:/data
 
   bsim_postgres:
-    image: ghidra-bsim-postgres:1.0.0
-    hostname: bsim_postgres
+    image: ghcr.io/quarkslab/sighthouse/ghidra-bsim-postgres:latest
     volumes:
       - ./data/postgres:/home/user/ghidra-data
-    ports:
-      - 5432:5432
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "/ghidra/Ghidra/Features/BSim/support/pg_is_ready.sh || exit 1 "]
-      retries: 5
-      interval: "30s"
-      timeout: "5s"
 
   create_user:
-    image: sighthouse:1.0.0
-    entrypoint: '/home/user/.local/bin/sighthouse'
-    command: 'frontend add-user -d sqlite:////data/frontend.db user -p password'
-    restart: no
+    image: ghcr.io/quarkslab/sighthouse/sighthouse-frontend:latest
+    entrypoint: sighthouse
+    command: "frontend add-user -d sqlite:////data/frontend.db user -p password"
+    restart: "no"
     volumes:
       - ./data/frontend:/data
-
 
   sighthouse_frontend:
-    image: sighthouse:1.0.0
-    restart: unless-stopped
-    entrypoint: '/home/user/.local/bin/sighthouse'
-    command: 'frontend -g /ghidra -d sqlite:////data/frontend.db -r local://data start -w redis://redis:6379/0 -b postgresql://user@bsim_postgres:5432/bsim'
-    healthcheck:
-      test: ["CMD-SHELL", "curl http://localhost:6671/api/v1/ping || exit 1 "]
-      retries: "5"
-      interval: "60s"
-      timeout: "5s"
-    volumes:
-      - ./data/frontend:/data
-    depends_on:
-      - create_user
-      - bsim_postgres
-      - redis
+    image: ghcr.io/quarkslab/sighthouse/sighthouse-frontend:latest
+    command: >
+      frontend -g /ghidra -d sqlite:////data/frontend.db
+      -r local://data start
+      -w redis://redis:6379/0
+      -b postgresql://user@bsim_postgres:5432/bsim
     ports:
       - "6669:6671"
+    volumes:
+      - ./data/frontend:/data
+    depends_on: [create_user, bsim_postgres, redis]
 ```
 
-The frontend can then simply be started using `docker compose up -d`.
+The frontend can then simply be started using `docker compose up -d`. 
+The API will be available on port 6669.

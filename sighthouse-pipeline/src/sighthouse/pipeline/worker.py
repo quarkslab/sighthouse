@@ -5,8 +5,20 @@ from traceback import format_exception
 from secrets import token_urlsafe
 from copy import deepcopy
 from pathlib import Path
+from uuid import uuid4
 import json
 import os
+
+
+def _healthcheck_path(worker_id: str) -> Path:
+    """Return a per-process healthcheck file path for the given worker id.
+
+    Uses the PID to avoid collisions when multiple instances of the same
+    module run on the same host.
+    """
+    sanitized = worker_id.replace(" ", "_")
+    return Path(f"/tmp/sighthouse_{sanitized}_{os.getpid()}.ready")
+
 
 from celery import Celery, signals
 from celery.app.task import Task
@@ -354,6 +366,8 @@ class CommonWorker:
         # Register signal handlers
         signals.task_success.connect(self._on_task_success, weak=False)
         signals.task_failure.connect(self._on_task_failure, weak=False)
+        signals.worker_ready.connect(self._on_worker_ready, weak=False)
+        signals.worker_shutdown.connect(self._on_worker_shutdown, weak=False)
 
     def _on_task_success(
         self, sender=None, result: Optional[Dict[str, Any]] = None, kwargs=None, **rest
@@ -405,6 +419,16 @@ class CommonWorker:
             f"failed/{module}/{job_id}.json", json.dumps(job).encode("utf-8")
         ):
             self._logger.error("result Task couldn't be uploaded")
+
+    def _on_worker_ready(self, sender=None, **kwargs) -> None:
+        """Write the per-process healthcheck file when the worker is fully up."""
+        path = _healthcheck_path(self._celery_app.worker_metadata["id"])
+        path.write_text("ready")
+
+    def _on_worker_shutdown(self, sender=None, **kwargs) -> None:
+        """Remove the healthcheck file on graceful shutdown."""
+        path = _healthcheck_path(self._celery_app.worker_metadata["id"])
+        path.unlink(missing_ok=True)
 
     def log(self, message: str, *args, **kwargs) -> None:
         """Log a message using worker's logger
@@ -507,12 +531,18 @@ class CommonWorker:
 
         for s in substeps:
             dup.execution_chain.current_step = s.step
+            # Generate the job UUID now so we can distinguish jobs
+            # even in the Redis queue
+            new_uuid = str(uuid4())
+            dup.job_metadata["id"] = new_uuid
+
             self._logger.debug(
                 "Sending task %s: %s", s, json.dumps(dup.to_dict(), indent=2)
             )
             self._celery_app.send_task(
                 "do_work",
                 queue=s.package,
+                task_id=new_uuid,
                 kwargs={"job_dict": dup.to_dict()},
             )
 
@@ -568,6 +598,7 @@ class CommonWorker:
         )
         def __do_work(task: Task, job_dict: Dict[str, Any]) -> Dict[str, Any]:
             job = Job.from_dict(job_dict)
+            # Should have already been updated but better be sure than sorry
             job.job_metadata["id"] = str(task.request.id)
             dup = deepcopy(job.to_dict())
 

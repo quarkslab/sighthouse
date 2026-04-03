@@ -249,7 +249,7 @@ def add_to_cli(app: SightHouseCommandLine) -> None:
             parser_pipeline_stats.add_argument(
                 "-s",
                 "--state",
-                choices=["success", "failed"],
+                choices=["success", "failed", "processing"],
                 help="Optional filter for jobs",
             )
             parser_pipeline_stats.add_argument(
@@ -263,7 +263,7 @@ def add_to_cli(app: SightHouseCommandLine) -> None:
             parser_pipeline_list.add_argument(
                 "-s",
                 "--state",
-                choices=["success", "failed"],
+                choices=["success", "failed", "processing"],
                 help="Optional filter for jobs",
             )
             parser_pipeline_list.add_argument(

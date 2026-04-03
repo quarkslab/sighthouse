@@ -1,6 +1,8 @@
 site_name: SightHouse Documentation 
 site_url: http://localhost:8000/sighthouse/ 
 site_author: Fenrisfulsur & Madsquirrels 
+repo_url: "https://github.com/quarkslab/sighthouse"
+repo_name: "quarkslab/sighthouse"
 
 theme:
   name: material
