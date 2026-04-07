@@ -1,7 +1,7 @@
 # check=skip=InvalidDefaultArgInFrom
 ARG BASE_URL
 
-FROM ${BASE_URL}/ghidraheadless-python3:1.0.2
+FROM ${BASE_URL}/ghidraheadless-python3:1.0.3
 
 USER user
 
