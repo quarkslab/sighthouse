@@ -59,7 +59,7 @@ def main(install_dir):
         # If we are already in a virtual environment, assume that's where the user wants to be
         print(f"Using active virtual environment: {sys.prefix}")
     elif os.path.isdir(release_venv_dir):
-        # If the Ghidra user settings venv exists, use that
+        # If the IDA user settings venv exists, use that
         python_cmd = get_venv_exe(release_venv_dir)
         print(f"Using IDA virtual environment: {release_venv_dir}")
     else:
@@ -72,7 +72,7 @@ def main(install_dir):
         "pip",
         "install",
         "--force-reinstall",
-        str(Path.cwd()),
+        "sighthouse.client",
     ]
     subprocess.check_call([python_cmd] + pip_args_sighthouse)
     copy_client_script_to_idadir(install_dir)

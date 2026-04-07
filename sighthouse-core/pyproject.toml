@@ -7,12 +7,12 @@ authors = [
 ]
 
 license = {file="LICENSE"}
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
   "psycopg[binary,pool]>=3.0.0",
   "minio>=7.2.16",
   "requests>=2.32.4",
-  "sighthouse-cli>=1.0.0"
+  "sighthouse-cli>=1.0.2"
 ]
 
 [tool.setuptools.packages.find]

@@ -41,7 +41,7 @@ services:
       - internal-net
 
   bsim_postgres:
-    image: ${BASE_URL}/ghidra-bsim-postgres:1.0.1
+    image: ${BASE_URL}/ghidra-bsim-postgres:${VERSION}
     hostname: bsim_postgres
     volumes:
       - ./data/postgres:/home/user/ghidra-data
@@ -55,7 +55,7 @@ services:
       - internal-net
 
   create_bsim_db_postgres:
-    image: ${BASE_URL}/create_bsim_db:1.0.1
+    image: ${BASE_URL}/create_bsim_db:${VERSION}
     command: 'user "" bsim_postgres postgresql 5432'
     depends_on:
       bsim_postgres:
@@ -65,7 +65,7 @@ services:
       - internal-net
 
   ghidra_analyzer:
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GhidraAnalyzer",
@@ -88,7 +88,7 @@ services:
       - internal-net
 
   autotools_compiler:
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/AutotoolsCompiler",
@@ -110,7 +110,7 @@ services:
       - internal-net
 
   git_scrapper:
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GitScrapper",
@@ -132,7 +132,7 @@ services:
       - external-net
 
   create_recipe:
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     entrypoint: >
       /home/user/.local/bin/sighthouse pipeline -r s3://minio:9000/uploads -w redis://redis:6379/0 start pipeline.yml
     volumes:

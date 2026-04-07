@@ -7,8 +7,10 @@ authors = [
 ]
 
 license = {file="LICENSE"}
-version = "1.0.1"
-dependencies = []
+version = "1.0.2"
+dependencies = [
+  "sighthouse-cli>=1.0.2"
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
