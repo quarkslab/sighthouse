@@ -99,43 +99,6 @@ jobs:
       - name: Logout from registry
         run: docker logout ghcr.io
 
-  pages:
-    name: Deploy Docs (GitHub Pages)
-    runs-on: ubuntu-latest
-
-    permissions:
-      pages: write
-      id-token: write
-
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install doc dependencies
-        working-directory: doc
-        run: make install
-
-      - name: Build docs
-        working-directory: doc
-        run: make build
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: doc/public
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-
   pypi:
     environment: release
     name: upload release to PyPI (${{ matrix.package }})
@@ -184,3 +147,40 @@ jobs:
         with:
           password: ${{ steps.mint-token.outputs.api-token }}
           packages-dir: ${{ matrix.package }}/dist/
+
+  pages:
+    name: Deploy Docs (GitHub Pages)
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install doc dependencies
+        working-directory: doc
+        run: make install
+
+      - name: Build docs
+        working-directory: doc
+        run: make build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: doc/public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
