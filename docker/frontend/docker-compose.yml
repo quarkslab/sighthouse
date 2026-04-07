@@ -40,7 +40,7 @@ services:
       - internal-net
 
   bsim_postgres:
-    image: ${BASE_URL}/ghidra-bsim-postgres:1.0.1
+    image: ${BASE_URL}/ghidra-bsim-postgres:${VERSION}
     hostname: bsim_postgres
     volumes:
       - ./data/bsim:/home/user/ghidra-data
@@ -76,7 +76,7 @@ services:
       - internal-net
 
   create_user:
-    image: ${BASE_URL}/sighthouse-frontend:1.0.1
+    image: ${BASE_URL}/sighthouse-frontend:${VERSION}
     entrypoint: '/home/user/.local/bin/sighthouse'
     command: "frontend -d 'postgresql://user:password@frontend_postgres:5432/frontend' add-user user -p password"
     restart: no
@@ -90,7 +90,7 @@ services:
       - internal-net
 
   sighthouse_frontend:
-    image: ${BASE_URL}/sighthouse-frontend:1.0.1
+    image: ${BASE_URL}/sighthouse-frontend:${VERSION}
     hostname: sighthouse_frontend
     restart: unless-stopped
     entrypoint: '/home/user/.local/bin/sighthouse'

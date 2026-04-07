@@ -1,4 +1,4 @@
-VERSION = 1.0.1
+VERSION = 1.0.2
 
 default: help
 
@@ -9,13 +9,44 @@ bump: # Bump the version .
 	@echo "[+] Bump package version $(VERSION)"
 	@# Update docker version
 	@sed -i "s/VERSION=.*/VERSION=\"$(VERSION)\"/" .env
-	@# Update pyprojects
+	@# Update pyprojects version
+	@sed -i "s/version = .*/version = \"$(VERSION)\"/" pyproject.toml 
 	@sed -i "s/version = .*/version = \"$(VERSION)\"/" sighthouse-cli/pyproject.toml 
 	@sed -i "s/version = .*/version = \"$(VERSION)\"/" sighthouse-client/pyproject.toml 
 	@sed -i "s/version = .*/version = \"$(VERSION)\"/" sighthouse-core/pyproject.toml 
 	@sed -i "s/version = .*/version = \"$(VERSION)\"/" sighthouse-frontend/pyproject.toml 
 	@sed -i "s/version = .*/version = \"$(VERSION)\"/" sighthouse-pipeline/pyproject.toml 
+	@# Update pyprojects dependencies for sighthouse
+	@sed -i "s/\(sighthouse[-\.][a-z]*\(>=\|==\)\)[0-9]\+\.[0-9]\+\.[0-9]\+/\1$(VERSION)/g" pyproject.toml
+	@sed -i "s/\(sighthouse[-\.][a-z]*\(>=\|==\)\)[0-9]\+\.[0-9]\+\.[0-9]\+/\1$(VERSION)/g" sighthouse-cli/pyproject.toml
+	@sed -i "s/\(sighthouse[-\.][a-z]*\(>=\|==\)\)[0-9]\+\.[0-9]\+\.[0-9]\+/\1$(VERSION)/g" sighthouse-client/pyproject.toml
+	@sed -i "s/\(sighthouse[-\.][a-z]*\(>=\|==\)\)[0-9]\+\.[0-9]\+\.[0-9]\+/\1$(VERSION)/g" sighthouse-core/pyproject.toml
+	@sed -i "s/\(sighthouse[-\.][a-z]*\(>=\|==\)\)[0-9]\+\.[0-9]\+\.[0-9]\+/\1$(VERSION)/g" sighthouse-frontend/pyproject.toml
+	@sed -i "s/\(sighthouse[-\.][a-z]*\(>=\|==\)\)[0-9]\+\.[0-9]\+\.[0-9]\+/\1$(VERSION)/g" sighthouse-pipeline/pyproject.toml 
+	@# Update version.py(s)
 	@sed -i "s/__version__ = .*/__version__ = \"$(VERSION)\"/" src/sighthouse/version.py
+	@sed -i "s/__version__ = .*/__version__ = \"$(VERSION)\"/" sighthouse-core/src/sighthouse/version.py
+	@sed -i "s/__version__ = .*/__version__ = \"$(VERSION)\"/" sighthouse-client/src/sighthouse/version.py
+	@sed -i "s/__version__ = .*/__version__ = \"$(VERSION)\"/" sighthouse-frontend/src/sighthouse/version.py
+	@sed -i "s/__version__ = .*/__version__ = \"$(VERSION)\"/" sighthouse-cli/src/sighthouse/version.py
+	@sed -i "s/__version__ = .*/__version__ = \"$(VERSION)\"/" sighthouse-pipeline/src/sighthouse/version.py
+	@# Update Dockerfile FROM base image versions
+	@sed -i "s|\(FROM \$${BASE_URL}/[^:]*:\)[0-9]\+\.[0-9]\+\.[0-9]\+|\1$(VERSION)|g" \
+	    docker/docker-ghidra-python3/Dockerfile \
+	    docker/docker-bsim-postgres/Dockerfile \
+	    docker/docker-bsim-elasticsearch/create-db.docker \
+	    docker/docker-bsim-elasticsearch/elastic_bsim.dockerfile \
+	    docker/docker-sighthouse/Dockerfile.sighthouse \
+	    docker/docker-sighthouse/Dockerfile.frontend \
+	    docker/docker-sighthouse/Dockerfile.pipeline
+	@# Update Dockerfile LABEL versions
+	@sed -i "s/LABEL version=\"[0-9]*\.[0-9]*\.[0-9]*\"/LABEL version=\"$(VERSION)\"/" \
+	    docker/docker-ghidra/Dockerfile \
+	    docker/docker-bsim-elasticsearch/create-db.docker
+	@# Update documentation
+	@sed -i "s|\(ghcr\.io/quarkslab/sighthouse/[^:]*:\)[0-9]\+\.[0-9]\+\.[0-9]\+|\1$(VERSION)|g" \
+	    doc/docs/signature-pipeline/quickstart.md \
+	    doc/docs/frontend/quickstart.md
 
 lint: # Format with black and lint with ruff.
 	@echo "[+] Linting"

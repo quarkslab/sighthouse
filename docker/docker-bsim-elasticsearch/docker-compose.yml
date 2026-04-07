@@ -1,6 +1,6 @@
 services:
   es01:
-    image: ${BASE_URL}/elastic_bsim:1.0.1
+    image: ${BASE_URL}/elastic_bsim:${VERSION}
     build:
       context: .
       dockerfile: ./elastic_bsim.dockerfile

@@ -1,9 +1,9 @@
 ARG BASE_URL
 
-FROM ${BASE_URL}/ghidraheadless:1.0.1
+FROM ${BASE_URL}/ghidraheadless:1.0.2
 
 COPY create-db.sh /entrypoint.sh
 
-LABEL version="1.0.1"
+LABEL version="1.0.2"
 LABEL name="bsim-create-db"
 

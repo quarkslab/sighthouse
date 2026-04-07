@@ -1,7 +1,7 @@
 #FROM openjdk:21-jdk-slim
 FROM eclipse-temurin:21-jdk-noble
 
-LABEL version="1.0.1"
+LABEL version="1.0.2"
 LABEL name="ghidraheadless"
 
 ENV VERSION 11.4.1_PUBLIC

@@ -36,7 +36,7 @@ services:
       "
 
   bsim_postgres:
-    image: ${BASE_URL}/ghidra-bsim-postgres:1.0.1
+    image: ${BASE_URL}/ghidra-bsim-postgres:${VERSION}
     hostname: bsim_postgres
     volumes:
       - ./data/postgres:/home/user/ghidra-data
@@ -50,7 +50,7 @@ services:
       timeout: "5s"
 
   create_bsim_db_postgres:
-    image: ${BASE_URL}/create_bsim_db:1.0.1 
+    image: ${BASE_URL}/create_bsim_db:${VERSION} 
     command: 'user "" bsim_postgres postgresql 5432'
     depends_on:
       bsim_postgres:
@@ -58,7 +58,7 @@ services:
     restart: no
 
   ghidra_analyzer1:
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GhidraAnalyzer",
@@ -73,7 +73,7 @@ services:
       - redis
 
   ghidra_analyzer2:
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GhidraAnalyzer",
@@ -88,7 +88,7 @@ services:
       - redis
 
   autotools_compiler1: 
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/AutotoolsCompiler",
@@ -101,7 +101,7 @@ services:
       - ghidra_analyzer2
 
   autotools_compiler2: 
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/AutotoolsCompiler",
@@ -114,7 +114,7 @@ services:
       - ghidra_analyzer2
 
   uclibc_compiler: 
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/uClibcCompiler",
@@ -127,7 +127,7 @@ services:
       - ghidra_analyzer2
 
   uclibc_preprocessor: 
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/uClibcPreprocessor",
@@ -139,7 +139,7 @@ services:
       - uclibc_compiler
 
   kernel_compiler1:
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/LinuxKernelCompiler",
@@ -152,7 +152,7 @@ services:
       - ghidra_analyzer2
 
   kernel_compiler2:
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/LinuxKernelCompiler",
@@ -165,7 +165,7 @@ services:
       - ghidra_analyzer2
 
   git_scrapper: 
-    image: ${BASE_URL}/sighthouse-pipeline:1.0.1
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GitScrapper",

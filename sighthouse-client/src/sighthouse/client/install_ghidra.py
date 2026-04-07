@@ -91,20 +91,6 @@ def version_tuple(v):
     return tuple(filled)
 
 
-def get_package_version(python_cmd: str, package: str) -> str:
-    version = None
-    result = subprocess.Popen(
-        [python_cmd, "-m", "pip", "show", package], stdout=subprocess.PIPE, text=True
-    )
-    for line in result.stdout.readlines():
-        line = line.strip()
-        print(line)
-        key, value = line.split(":", 1)
-        if key == "Version":
-            version = value.strip()
-    return version
-
-
 def install(
     install_dir: Path, python_cmd: str, pip_args: List[str], offer_venv: bool
 ) -> bool:
@@ -434,15 +420,7 @@ def main(install_dir: str) -> None:
     release_venv_dir = get_ghidra_venv(install_dir)
 
     # If in release mode, offer to install or upgrade PyGhidra before launching from user-controlled environment
-    pip_args_poetry: List[str] = [
-        "-m",
-        "pip",
-        "install",
-        "--force-reinstall",
-        "poetry",
-    ]
-    poetry_args_build: List[str] = ["-m", "poetry", "build"]
-    pip_args_pyghidra: List[str] = [
+    pip_args: List[str] = [
         "-m",
         "pip",
         "install",
@@ -453,14 +431,10 @@ def main(install_dir: str) -> None:
     ]
 
     # Setup the proper execution environment:
-    # 1) If we are already in a virtual environment, use that
-    # 2) If the Ghidra user settings virtual environment exists, use that
-    # 3) If we are "externally managed", automatically create/use the Ghidra user settings virtual environment
+    # 1) If the Ghidra user settings virtual environment exists, use that
+    # 2) If we are "externally managed", automatically create/use the Ghidra user settings virtual environment
     offer_venv: bool = False
-    if in_venv():
-        # If we are already in a virtual environment, assume that's where the user wants to be
-        print(f"Using active virtual environment: {sys.prefix}")
-    elif os.path.isdir(release_venv_dir):
+    if os.path.isdir(release_venv_dir):
         # If the Ghidra user settings venv exists, use that
         python_cmd = get_venv_exe(release_venv_dir)
         print(f"Using Ghidra virtual environment: {release_venv_dir}")
@@ -473,18 +447,17 @@ def main(install_dir: str) -> None:
 
     # If PyGhidra is not installed in the execution environment, offer to install it
     # If it's already installed, offer to upgrade (if applicable)
-    for pip_args in [pip_args_poetry, poetry_args_build, pip_args_pyghidra]:
-        python_cmd = install(install_dir, python_cmd, pip_args, offer_venv)
-        if not python_cmd:
-            sys.exit(1)
+    python_cmd = install(install_dir, python_cmd, pip_args, offer_venv)
+    if not python_cmd:
+        sys.exit(1)
 
-    # Now that poetry has build our package, install sighthouse
+    # Now install sighthouse
     pip_args_sighthouse: List[str] = [
         "-m",
         "pip",
         "install",
         "--force-reinstall",
-        str(list((Path.cwd() / "dist/").glob("*.whl"))[-1]),
+        "sighthouse.client",
     ]
     if not install(install_dir, python_cmd, pip_args_sighthouse, offer_venv):
         sys.exit(1)

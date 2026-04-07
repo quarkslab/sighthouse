@@ -76,7 +76,7 @@ services:
       - ./data/postgres:/home/user/ghidra-data
 
   create_user:
-    image: ghcr.io/quarkslab/sighthouse/sighthouse-frontend:latest
+    image: ghcr.io/quarkslab/sighthouse/sighthouse-frontend:1.0.2
     entrypoint: sighthouse
     command: "frontend add-user -d sqlite:////data/frontend.db user -p password"
     restart: "no"
@@ -84,7 +84,7 @@ services:
       - ./data/frontend:/data
 
   sighthouse_frontend:
-    image: ghcr.io/quarkslab/sighthouse/sighthouse-frontend:latest
+    image: ghcr.io/quarkslab/sighthouse/sighthouse-frontend:1.0.2
     command: >
       frontend -g /ghidra -d sqlite:////data/frontend.db
       -r local://data start
