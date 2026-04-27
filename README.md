@@ -3,7 +3,15 @@
 <img align="right" src="./doc/docs/assets/images/logo.png" width="270">
 
 SightHouse is a tool designed to assist reverse engineers by retrieving information and 
-metadata from programs and identifying similar functions.
+metadata from programs and identifying similar functions. 
+The project is divided into three parts:
+
+- **Signature Pipeline**: Automatically feeds the signature database with new projects by 
+  scraping, compiling, and analyzing them.
+- **Frontend**: A server that allows users to query signatures from the database produced by
+  the signature pipeline.
+- **SRE Clients**: Plugins tailored for each Software Reverse Engineering tool that interact 
+  with the frontend. We currently support IDA, Ghidra, and Binary Ninja.
 
 ## Installation
 
