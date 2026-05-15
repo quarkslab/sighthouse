@@ -10,8 +10,8 @@ set -a
 . ${SCRIPT_DIR}/../.version
 set +a
 
-docker push "$BASE_URL"/ghidraheadless-python3:1.0.0
+docker push "$BASE_URL"/ghidraheadless-python3:$VERSION
 docker push "$BASE_URL"/ghidraheadless-python3:latest
 
-docker push "$BASE_URL"/ghidraheadless:1.0.0
+docker push "$BASE_URL"/ghidraheadless:$VERSION
 docker push "$BASE_URL"/ghidraheadless:latest
