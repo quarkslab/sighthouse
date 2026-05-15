@@ -4,6 +4,7 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
 
 set -a
 . ${SCRIPT_DIR}/../../.env
+. ${SCRIPT_DIR}/../../.version
 set +a
 
 mkdir -p "$SCRIPT_DIR/data/postgres"

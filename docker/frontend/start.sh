@@ -15,4 +15,4 @@ fi
 
 chown -R 1000:1000 "$SCRIPT_DIR/data"
 
-docker compose --env-file ${SCRIPT_DIR}/../../.env -f "$SCRIPT_DIR/docker-compose.yml" up -d
+docker compose --env-file ${SCRIPT_DIR}/../../.env --env-file ${SCRIPT_DIR}/../../.version -f "$SCRIPT_DIR/docker-compose.yml" up -d

@@ -5,6 +5,7 @@ set -e
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
 set -a
 . ${SCRIPT_DIR}/../../.env
+. ${SCRIPT_DIR}/../../.version
 set +a
 
 IMAGE=ghidra-bsim-postgres

@@ -8,7 +8,7 @@ help: # Show help for each of the Makefile recipes.
 bump: # Bump the version .
 	@echo "[+] Bump package version $(VERSION)"
 	@# Update docker version
-	@sed -i "s/VERSION=.*/VERSION=\"$(VERSION)\"/" .env
+	@sed -i "s/VERSION=.*/VERSION=\"$(VERSION)\"/" .version
 	@# Update pyprojects version
 	@sed -i "s/version = .*/version = \"$(VERSION)\"/" pyproject.toml 
 	@sed -i "s/version = .*/version = \"$(VERSION)\"/" sighthouse-cli/pyproject.toml 

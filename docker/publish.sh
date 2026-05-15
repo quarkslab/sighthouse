@@ -7,6 +7,7 @@ set -e
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
 set -a
 . ${SCRIPT_DIR}/../.env
+. ${SCRIPT_DIR}/../.version
 set +a
 
 docker push "$BASE_URL"/create_bsim_db:$VERSION
