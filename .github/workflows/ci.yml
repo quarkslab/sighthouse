@@ -12,7 +12,7 @@ env:
   PACKAGE_VERSION: "1.0.0"
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  GHIDRA_IMAGE: ghcr.io/${{ github.repository }}/ghidraheadless-python3-ci:1.0.0
+  GHIDRA_IMAGE: ghcr.io/${{ github.repository }}/ghidraheadless-python3:latest
 
 jobs:
 
@@ -50,10 +50,40 @@ jobs:
       - name: Type check
         run: make type-check
 
+  docker_ghidra:
+    name: Build & Publish Ghidra Base Image
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Ghidra base images
+        run: |
+          cd docker
+          chmod +x docker-ghidra/build.sh docker-ghidra-python3/build.sh
+          ./docker-ghidra/build.sh
+          ./docker-ghidra-python3/build.sh
+
+      - name: Publish Ghidra base images
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          cd docker
+          chmod +x publish-ghidra.sh
+          ./publish-ghidra.sh
+
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: [setup]
+    needs: [setup, docker_ghidra]
     permissions:
       packages: read
     steps:
@@ -77,11 +107,14 @@ jobs:
       - name: Run tests
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp \
+            -v ${{ github.workspace }}:${{ github.workspace }} \
+            -w ${{ github.workspace }} \
             -e GHIDRA_INSTALL_DIR=/ghidra \
+            --entrypoint bash \
             ${{ env.GHIDRA_IMAGE }} \
-            make test
+            -c "make test"
 
   docker_generation:
     name: Build & Publish Docker Image

@@ -12,7 +12,7 @@ variables:
 test-sighthouse:
   stage: test
   image:
-    name: docker.qb/sighthouse/sighthouse/ghidraheadless-python3-ci:${PACKAGE_VERSION}
+    name: docker.qb/sighthouse/sighthouse/ghidraheadless-python3:latest
     entrypoint: [""]
   script:
     - make install-dev || true
