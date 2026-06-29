@@ -7,13 +7,13 @@ authors = [
 ]
 
 license = {file="LICENSE"}
-version = "1.0.4"
+version = "1.0.5"
 requires-python = ">= 3.11"
 dependencies = [
   "celery>=5.5.3", # frontend/pipeline
   "redis>=6.3.0", # nowhere??
   "pyaml>=25.7.0",
-  "sighthouse-core>=1.0.4"
+  "sighthouse-core>=1.0.5"
 ]
 
 [tool.setuptools.packages.find]

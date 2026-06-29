@@ -7,10 +7,10 @@ authors = [
 ]
 
 license = {file="LICENSE"}
-version = "1.0.4"
+version = "1.0.5"
 requires-python = ">= 3.11"
 dependencies = [
-  "sighthouse-cli>=1.0.4",
+  "sighthouse-cli>=1.0.5",
   "requests"
 ]
 

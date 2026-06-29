@@ -1,7 +1,7 @@
 # check=skip=InvalidDefaultArgInFrom
 ARG BASE_URL
 
-FROM ${BASE_URL}/ghidraheadless-python3:1.0.4 AS builder
+FROM ${BASE_URL}/ghidraheadless-python3:1.0.5 AS builder
 
 USER user
 COPY --chown=user build /build
@@ -16,7 +16,7 @@ RUN python3 -m pip install --user --break-system-packages \
     && find /home/user/.cache/pip -mindepth 1 -delete 2>/dev/null || true
 
 
-FROM ${BASE_URL}/ghidraheadless-python3:1.0.4
+FROM ${BASE_URL}/ghidraheadless-python3:1.0.5
 
 USER user
 COPY --from=builder --chown=user /home/user/.local /home/user/.local

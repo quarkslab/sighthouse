@@ -1,6 +1,6 @@
 ARG BASE_URL
 
-FROM ${BASE_URL}/ghidraheadless:1.0.4 as ghidraheadless_layer
+FROM ${BASE_URL}/ghidraheadless:1.0.5 as ghidraheadless_layer
 FROM docker.elastic.co/elasticsearch/elasticsearch:8.8.1
 
 ARG ELASTIC_USERNAME
