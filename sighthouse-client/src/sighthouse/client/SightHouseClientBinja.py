@@ -11,6 +11,7 @@ try:
         LoggingSighthouse,
         Section,
         Function,
+        AnalysisOptions,
         get_hash,
     )
 except ModuleNotFoundError:
@@ -22,6 +23,7 @@ except ModuleNotFoundError:
             LoggingSighthouse,
             Section,
             Function,
+            AnalysisOptions,
             get_hash,
         )
     except:
@@ -92,24 +94,28 @@ class SightHouseBinjaAnalysis(SightHouseAnalysis, binaryninja.BackgroundTaskThre
         password: str,
         verify_host: bool = True,
         force_submission: bool = False,
-        options: dict = None,
+        options: AnalysisOptions = None,
     ):
-        """Initialize SightHouseAnalysis
+        """Initialize SightHouseBinjaAnalysis
 
         Args:
-            bv(binaryninja.BinaryView): Binary nija view
+            bv (binaryninja.BinaryView): Binary ninja view
+            url (str): URL of Sighthouse server
             username (str): username to connect to server
             password (str): password to connect to server
-            client (SightHouseClient): A Sighthouse client link to the SRE
+            verify_host (bool): Option to enable or disable certificate verification
+            force_submission (bool): Delete cached information on the server side if any
+                                     before starting a new analysis
+            options (AnalysisOptions | None): Options for the analysis
         """
         # This need to be done before calling super().__init__ as it calls get_current_arch
         self.bv = bv
         self.warn_function_details = False
         binaryninja.BackgroundTaskThread.__init__(self, "SightHouse client", True)
         super().__init__(
+            url,
             username,
             password,
-            url,
             LoggingBinjaSighthouse(),
             verify_host=verify_host,
             force_submission=force_submission,
@@ -232,9 +238,7 @@ def run_plugin(bv: binaryninja.BinaryView) -> None:
         password,
         verify_host=verify_host,
         force_submission=force_submission,
-        options={
-            "BobRoss": bob_ross,
-        },
+        options=AnalysisOptions(bob_ross=bob_ross, auto_analysis=False),
     )
     analyzer.start()
 
@@ -248,9 +252,7 @@ def main(path: str, url: str, username: str, password: str):
         password,
         verify_host=False,
         force_submission=True,
-        options={
-            "BobRoss": False,
-        },
+        options=AnalysisOptions(bob_ross=bob_ross, auto_analysis=False),
     )
     analyzer.start()
 

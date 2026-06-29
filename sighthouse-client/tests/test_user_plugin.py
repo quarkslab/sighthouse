@@ -215,7 +215,7 @@ class TestClient(unittest.TestCase):
 
     def test_mock_analysis(self):
         analysis = SightHouseMockAnalysis(
-            "user", "password", "http://localhost", MockLoggingSighthouse()
+            "http://localhost", "user", "password", MockLoggingSighthouse()
         )
         # Patch client session
         analysis._client._session = MockSession()

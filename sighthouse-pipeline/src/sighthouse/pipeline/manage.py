@@ -353,13 +353,13 @@ class PipelineManager:
             names = names.union(set(queue["name"] for queue in payload))
 
         # Now iterate over all of them using redis command as we know it's the backend
+        jobs = []
         for queue in names:
             count = self._celery_app.backend.client.llen(queue)
             self._logger.debug(f"Queue '{queue}' has {count} task")
             if count <= 0:
                 continue
 
-            jobs = []
             # Number of jobs we query from redis
             batch_size = 1000
             for i in range(0, count, batch_size):

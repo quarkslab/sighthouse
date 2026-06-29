@@ -342,6 +342,7 @@ class SightHouseConfiguration {
   private String error;
   private SightHouseProgram program;
   private BsimConfiguration bsim;
+  private AnalysisOptions options;
 
   // Getters and Setters
   public String getFile() { return file; }
@@ -349,6 +350,14 @@ class SightHouseConfiguration {
   public String getErrorLog() { return error; }
   public SightHouseProgram getProgram() { return program; }
   public BsimConfiguration getBsim() { return bsim; }
+  public AnalysisOptions getAnalysisOptions() { return options; }
+}
+
+class AnalysisOptions {
+  private Boolean auto_analysis = false; // Disabled by default
+
+  // Getters and Setters
+  public Boolean doAutoAnalysis() { return auto_analysis; }
 }
 
 class BsimConfiguration {
@@ -655,7 +664,7 @@ public class SightHouseFrontendScript extends GhidraScript {
     return null;
   }
 
-  private boolean analyzeProgram(Program program) {
+  private boolean analyzeProgram(Program program, AnalysisOptions analysisOptions) {
     // Adapted from analyzeProgram of Ghidra/Features/Base/src/main/java/ghidra/app/util/headless/HeadlessAnalyzer.java. 
     AutoAnalysisManager mgr = AutoAnalysisManager.getAnalysisManager(program);
     mgr.initializeOptions();
@@ -667,6 +676,16 @@ public class SightHouseFrontendScript extends GhidraScript {
     Map<String, String> options = getCurrentAnalysisOptionsAndValues(program);
     if (options.containsKey(DECOMPILER_SWITCH_ANALYZER)) {
       setAnalysisOption(program, DECOMPILER_SWITCH_ANALYZER, "false");
+    }
+
+    if (!analysisOptions.doAutoAnalysis()) {
+      // Disable almost all analysis if auto_analysis
+      for (Map.Entry<String, String> entry : options.entrySet()) {
+        // Disable all boolean options that are enabled by default
+        if (entry.getValue().equals("true")) {
+          setAnalysisOption(program, entry.getKey(), "false");
+        }
+      }
     }
 
     try {
@@ -891,7 +910,7 @@ public class SightHouseFrontendScript extends GhidraScript {
         throw new Exception("Fail to load program '" + sg.getName() + "'");
       }
 
-      if (!analyzeProgram(program)) {
+      if (!analyzeProgram(program, config.getAnalysisOptions())) {
         throw new Exception("Fail to analyze program '" + sg.getName() + "'");
       }
       this.saveProgram(program);

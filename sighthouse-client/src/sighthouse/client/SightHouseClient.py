@@ -99,6 +99,62 @@ class Signature(object):
         return "\n".join(m.to_string(2) for m in self.matches)
 
 
+# @NOTE: This class is duplicated from sighthouse.frontend but it avoid importing it
+#   as dependency.
+class AnalysisOptions:
+    """Class that store analysis options for the frontend
+
+    This class holds all options relevant for running the analysis. Those options
+    can impact different steps. For instance, `bob_ross` is a post analysis option
+    while `auto_analysis` is relevant when running the analysis inside the ghidra
+    script.
+    """
+
+    def __init__(self, bob_ross: bool = False, auto_analysis: bool = False):
+        self.bob_ross = bob_ross
+        self.auto_analysis = auto_analysis
+
+    @staticmethod
+    def from_dict(data: dict) -> "AnalysisOptions":
+        """
+        Create an AnalysisOptions instance from a dictionary.
+
+        Args:
+            data (dict): A dictionary containing the analysis data.
+                         can include 'bob_ross' (bool/string)
+                         and 'auto_analysis' (bool/string).
+
+        Returns:
+            AnalysisOptions: An instance of the AnalysisOptions class.
+
+        Raises:
+            ValueError: If any of the required fields are of the wrong type.
+        """
+        if not isinstance(data, dict):
+            raise ValueError("data is not a dict")
+        if "bob_ross" in data and not isinstance(data["bob_ross"], bool):
+            raise ValueError("bob_ross must be a boolean")
+        if "auto_analysis" in data and not isinstance(data["auto_analysis"], bool):
+            raise ValueError("auto_analysis must be a boolean")
+
+        return AnalysisOptions(
+            bob_ross=data.get("bob_ross", False),
+            auto_analysis=data.get("auto_analysis", False),
+        )
+
+    def to_dict(self) -> dict:
+        """
+        Convert the AnalysisOptions instance to a dictionary.
+
+        Returns:
+            dict: A dictionary representation of the AnalysisOptions instance.
+        """
+        return {
+            "bob_ross": self.bob_ross,
+            "auto_analysis": self.auto_analysis,
+        }
+
+
 class SightHouseClient(object):
 
     def __init__(
@@ -462,7 +518,7 @@ class SightHouseClient(object):
             return True
         return False
 
-    def start_analysis(self, options: dict = None) -> bool:
+    def start_analysis(self, options: AnalysisOptions = None) -> bool:
         """Start the analysis on the server
 
         Returns:
@@ -472,9 +528,11 @@ class SightHouseClient(object):
         err_prefix = "Analyze failure"
         route = self.get_api_url() + "programs/{}/analyze".format(self._programid)
         url = self._url._replace(path=route).geturl()
+        # Use default options if not provided
+        opts = options or AnalysisOptions()
         try:
             resp = self._session.post(
-                url, json=options if options else {}, verify=self._verify_host
+                url, json=opts.to_dict(), verify=self._verify_host
             )
             resp.raise_for_status()
         except requests.exceptions.HTTPError:
@@ -517,22 +575,6 @@ class SightHouseClient(object):
             self._logger.error(f"{err_prefix}: {e}")
 
         return False
-
-    def analyze(self, delay: int = 30, options=None) -> bool:
-        """Analyze current program
-
-        Returns:
-            bool: Whether the operation has succeeded (True) or not (False).
-        """
-        if not self.start_analysis(options=options):
-            return False
-
-        # Poll periodically
-        while self.is_analyzing():
-            # Sleep
-            time.sleep(delay)
-
-        return True
 
     def get_matches(self) -> list[Signature] | None:
         """
@@ -630,34 +672,37 @@ class SightHouseAnalysis:
 
     def __init__(
         self,
+        url: str,
         username: str,
         password: str,
-        url: str,
         logger: LoggingSighthouse,
         verify_host: bool = True,
         force_submission: bool = False,
-        options: dict = None,
+        options: AnalysisOptions = None,
     ) -> None:
         """Initialize SightHouseAnalysis
 
         Args:
+            url (str): URL of Sighthouse server
             username (str): username to connect to server
             password (str): password to connect to server
-            url (str): URL of Sighthouse server
-            client (LoggingSighthouse): A Sighthouse Logging linked to SRE
+            logger (LoggingSighthouse): A Sighthouse Logging linked to SRE
             verify_host (bool): Option to enable or disable certificate verification
+            force_submission (bool): Delete cached information on the server side if any
+                                     before starting a new analysis
+            options (AnalysisOptions | None): Options for the analysis
         """
         self._username = username
         self._password = password
         self._logger = logger
         self._client = SightHouseClient(url, self._logger, verify_host=verify_host)
         self._force_submission = force_submission
-        self.processor = self.get_current_arch()
-        if self.processor is None:
+        self._processor = self.get_current_arch()
+        if self._processor is None:
             self._logger.error("architecture not found or not supported yet")
             return None
 
-        self._options = options if options else {}
+        self._options = options or AnalysisOptions()
 
     def get_current_arch(self) -> None:
         """get current architecture and translate to ghidra one"""
@@ -724,6 +769,15 @@ class SightHouseAnalysis:
         """
         raise NotImplementedError("get_hash_program")
 
+    def wait(self, seconds: int = 10) -> None:
+        """Some analyzers will need to handle sleeping differently.
+           The default implementation rely on time.sleep.
+
+        Args:
+            seconds (int): The number of seconds to wait for
+        """
+        time.sleep(seconds)
+
     def run(self) -> bool:
         """Run the complete analysis"""
         try:
@@ -747,12 +801,12 @@ class SightHouseAnalysis:
             do_import = True
             if program_id is None:
                 # No program found, create a new one
-                if not self._client.create_program(program_name, self.processor):
+                if not self._client.create_program(program_name, self._processor):
                     return False
 
             elif self._force_submission:
                 self._client.delete_program(program_id)
-                self._client.create_program(program_name, self.processor)
+                self._client.create_program(program_name, self._processor)
             else:
                 # Program exists and force_submission is false -> use cache
                 do_import = False
@@ -773,8 +827,14 @@ class SightHouseAnalysis:
                             return False
 
                 self.update_progress("Analyzing the binary file...")
-                if not self._client.analyze(options=self._options):
+                if not self._client.start_analysis(options=self._options):
                     return False
+
+                self.update_progress("Analysis started.")
+
+                # Poll periodically
+                while self._client.is_analyzing():
+                    self.wait()
 
             self.update_progress("Request for matches...")
             signatures = self._client.get_matches()

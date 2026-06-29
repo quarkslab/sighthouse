@@ -6,7 +6,7 @@ PG_ISREADY=/ghidra/Ghidra/Features/BSim/build/os/linux_x86_64/postgresql/bin/pg_
 # On some system, docker does not expose a localhost interface, so we use the IP address
 LOCALHOST=127.0.0.1
 
-if [[ ! $(${PG_ISREADY} -h ${LOCALHOST} -p 5432) ]]; then
+if ! "${PG_ISREADY}" -h "${LOCALHOST}" -p 5432; then
   exit 1
 fi
 exit 0

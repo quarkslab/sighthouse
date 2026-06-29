@@ -79,6 +79,28 @@ type-check: # Run mypy.
                                            --config-file sighthouse-cli/pyproject.toml \
                                            sighthouse-cli
 
+SHELL_SCRIPTS = $(shell find docker -name '*.sh')
+COMPOSE_FILES = $(shell find docker -name 'docker-compose*.yml')
+
+shellcheck: # Lint docker shell scripts.
+	@echo "[+] Shellcheck"
+	@if command -v shellcheck >/dev/null 2>&1; then \
+		shellcheck --severity=warning $(SHELL_SCRIPTS); \
+	else \
+		echo "shellcheck not found, please install it: https://github.com/koalaman/shellcheck (skipping)."; \
+	fi
+
+compose-check: # Validate docker compose files with 'docker compose config'.
+	@echo "[+] Validating docker compose files"
+	@command -v docker >/dev/null 2>&1 || { echo "docker not found, please install it: https://docs.docker.com/engine/install/"; exit 1; }
+	@for f in $(COMPOSE_FILES); do \
+		echo "  - $$f"; \
+		docker compose --env-file .env --env-file .version -f "$$f" config -q || exit 1; \
+	done
+
+check: # Run all static checks (type-check, shellcheck, compose-check).
+check: type-check shellcheck compose-check
+
 test: # Run pytest.
 	@echo "[+] Run tests"
 	@if [ ! -d "./venv" ]; then echo "No venv detected. Please use 'make install-dev' first."; exit 1; fi
@@ -121,6 +143,8 @@ clean: # Clean build artefacts
 	@find . -name '__pycache__' -type d -exec rm -rf {} +
 	@find . -name '*.class' -type f -delete
 	@find . -name '*.egg-info' -type d -exec rm -rf {} +
+	@find . -name '.mypy_cache' -type d -exec rm -rf {} +
+	@find . -name '.pytest_cache' -type d -exec rm -rf {} +
 	@$(RM) -rf dist build sighthouse-pipeline/build sighthouse-frontend/build sighthouse-core/build \
 						sighthouse-client/build htmlcov .coverage
 	

@@ -1,4 +1,4 @@
 #!/bin/sh
 # This pre commit hook unsure that the code formatter is run before commit new code
 #
-make lint && git add -u
+make lint && make shellcheck && make compose-check && git add -u

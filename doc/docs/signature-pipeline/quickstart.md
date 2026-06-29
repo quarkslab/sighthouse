@@ -62,35 +62,36 @@ services:
     networks:
       - internal-net
 
-  minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
-    hostname: minio
+  rustfs:
+    image: rustfs/rustfs:latest
+    hostname: rustfs
+    user: "1000:1000"
     #ports:
     #  - "9000:9000"
     #  - "9001:9001"
     environment:
-      - MINIO_ROOT_USER=admin
-      - MINIO_ROOT_PASSWORD=password
-    command: 'minio server --console-address ":9001" /data'
+      - RUSTFS_ACCESS_KEY=admin
+      - RUSTFS_SECRET_KEY=password
+      - RUSTFS_VOLUMES=/data
+      - RUSTFS_ADDRESS=:9000
+      - RUSTFS_CONSOLE_ADDRESS=:9001
     volumes:
-      - ./data/minio:/data
+      - ./data/rustfs:/data
     networks:
       - internal-net
       - external-net
 
   createbuckets:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: rustfs/rc:latest
     depends_on:
-      - minio
+      - rustfs
     restart: on-failure
-    entrypoint: >
-      /bin/sh -c "
-      sleep 3;
-      /usr/bin/mc alias set dockerminio http://minio:9000 admin password;
-      /usr/bin/mc mb dockerminio/uploads;
-      /usr/bin/mc anonymous set public dockerminio/uploads;
-      exit 0;
-      "
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until rc alias set dockerrustfs http://rustfs:9000 admin password; do echo waiting rustfs; sleep 2; done
+        rc mb dockerrustfs/uploads || true
+        rc anonymous set download dockerrustfs/uploads || true
     networks:
       - internal-net
 
@@ -125,7 +126,7 @@ services:
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GhidraAnalyzer",
       "Ghidra Analyzer",
       "-w", "redis://redis:6379/0",
-      "-r", "s3://minio:9000/uploads",
+      "-r", "s3://admin:password@rustfs:9000/uploads",
       "-g", "/ghidra",
     ]
     healthcheck:
@@ -136,7 +137,7 @@ services:
       start_period: 30s
     depends_on:
       - bsim_postgres
-      - minio
+      - rustfs
       - redis
     networks:
       - internal-net
@@ -148,7 +149,7 @@ services:
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/AutotoolsCompiler",
       "Autotools Compiler",
       "-w", "redis://redis:6379/0",
-      "-r", "s3://minio:9000/uploads",
+      "-r", "s3://admin:password@rustfs:9000/uploads",
       "--strict"
     ]
     healthcheck:
@@ -170,7 +171,7 @@ services:
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GitScrapper",
       "Git Scrapper",
       "-w", "redis://redis:6379/0",
-      "-r", "s3://minio:9000/uploads",
+      "-r", "s3://admin:password@rustfs:9000/uploads",
     ]
     healthcheck:
       test: ["CMD-SHELL", "ls /tmp/sighthouse_Git_Scrapper_*.ready 2>/dev/null | grep -q ."]
@@ -188,7 +189,7 @@ services:
   create_recipe:
     image: ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:1.0.4
     entrypoint: >
-      /home/user/.local/bin/sighthouse pipeline -r s3://minio:9000/uploads -w redis://redis:6379/0 start pipeline.yml
+      /home/user/.local/bin/sighthouse pipeline -r s3://admin:password@rustfs:9000/uploads -w redis://redis:6379/0 start /build/pipeline.yml
     volumes:
       - ./data/pipeline.yml:/build/pipeline.yml:ro
     depends_on:

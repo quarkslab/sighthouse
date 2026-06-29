@@ -1,0 +1,5 @@
+name: Cmake Compiler 
+description: Compiler for Cmake projects
+version: 1.0.0
+author: Sighthouse Core Team 
+license: MIT

@@ -33,10 +33,11 @@ class TestRepo(unittest.TestCase):
     def test_list_directory_s3(self):
         repo = Repo("s3://test-bucket/dir")
         mock_client = MagicMock()
-        mock_client.list_objects.return_value = [
-            MagicMock(object_name="file1.txt"),
-            MagicMock(object_name="file2.txt"),
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [
+            {"Contents": [{"Key": "file1.txt"}, {"Key": "file2.txt"}]},
         ]
+        mock_client.get_paginator.return_value = mock_paginator
         repo._client = mock_client
         files = repo.list_directory("/")
         self.assertEqual(files, ["file1.txt", "file2.txt"])
@@ -51,7 +52,7 @@ class TestRepo(unittest.TestCase):
     def test_get_sharefile_s3(self):
         repo = Repo("s3://test-bucket/dir")
         mock_client = MagicMock()
-        mock_client.get_presigned_url.return_value = "http://presigned.url"
+        mock_client.generate_presigned_url.return_value = "http://presigned.url"
         repo._client = mock_client
         url = repo.get_sharefile("/some/file.txt")
         self.assertEqual(url, "http://presigned.url")

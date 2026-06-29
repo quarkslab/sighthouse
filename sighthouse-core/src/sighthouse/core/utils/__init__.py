@@ -30,14 +30,12 @@ def parse_uri(uri: str) -> Dict[str, Any]:
             return data
 
         # Handle relative or absolute paths
-        if parsed.netloc:  # sqlite://localhost/path.db
-            path = f"/{parsed.netloc}{parsed.path}"
+        if parsed.netloc:  # sqlite://path/to/path.db
+            path = unquote(f"{parsed.netloc}{parsed.path}")
         else:  # sqlite:///path.db
-            path = parsed.path
+            # Remove leading slash for relative paths on Unix
+            path = unquote(parsed.path)
 
-        path = unquote(
-            path[1:] if path[0] == "/" else path
-        )  # remove leading slash for relative paths on Unix
         data.update({"database": Path(path).absolute()})
 
     elif kind in ["postgres", "postgresql"]:

@@ -8,7 +8,7 @@ services:
     volumes:
       - ./ghidra-data:/home/user/ghidra-data
     healthcheck:
-      test: ["CMD-SHELL", "/ghidra/Ghidra/Features/BSim/pg_is_ready.sh || exit 1 "]
+      test: ["CMD-SHELL", "/ghidra/Ghidra/Features/BSim/support/pg_is_ready.sh || exit 1 "]
       retries: 5
       interval: 30s
       timeout: 5s

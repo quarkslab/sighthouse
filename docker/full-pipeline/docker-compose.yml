@@ -8,32 +8,33 @@ services:
     volumes:
       - ./data/redis:/data
 
-  minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
-    hostname: minio
+  rustfs:
+    image: rustfs/rustfs:latest
+    hostname: rustfs
+    user: "1000:1000"
     environment:
-      - MINIO_ROOT_USER=admin
-      - MINIO_ROOT_PASSWORD=password
-    command: 'minio server --console-address ":9001" /data'
+      - RUSTFS_ACCESS_KEY=admin
+      - RUSTFS_SECRET_KEY=password
+      - RUSTFS_VOLUMES=/data
+      - RUSTFS_ADDRESS=:9000
+      - RUSTFS_CONSOLE_ADDRESS=:9001
     volumes:
-      - ./data/minio:/data
+      - ./data/rustfs:/data
     ports:
       - "9000:9000"
       - "9001:9001"
 
   createbuckets:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: rustfs/rc:latest
     depends_on:
-      - minio
+      - rustfs
     restart: on-failure
-    entrypoint: >
-      /bin/sh -c "
-      sleep 3;
-      /usr/bin/mc alias set dockerminio http://minio:9000 admin password;
-      /usr/bin/mc mb dockerminio/uploads;
-      /usr/bin/mc anonymous set public dockerminio/uploads;
-      exit 0;
-      "
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until rc alias set dockerrustfs http://rustfs:9000 admin password; do echo waiting rustfs; sleep 2; done
+        rc mb dockerrustfs/uploads || true
+        rc anonymous set download dockerrustfs/uploads || true
 
   bsim_postgres:
     image: ${BASE_URL}/ghidra-bsim-postgres:${VERSION}
@@ -61,40 +62,37 @@ services:
     image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GhidraAnalyzer",
-      "Ghidra Analyzer",
+      "package", "run", "-i", "-f", "GhidraAnalyzer",
       "-w", "redis://redis:6379/0",
-      "-r", "s3://minio:9000/uploads",
+      "-r", "s3://admin:password@rustfs:9000/uploads",
       "-g", "/ghidra",
     ]
     depends_on:
       - bsim_postgres
-      - minio
+      - rustfs
       - redis
 
   ghidra_analyzer2:
     image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GhidraAnalyzer",
-      "Ghidra Analyzer",
+      "package", "run", "-i", "-f", "GhidraAnalyzer",
       "-w", "redis://redis:6379/0",
-      "-r", "s3://minio:9000/uploads",
+      "-r", "s3://admin:password@rustfs:9000/uploads",
       "-g", "/ghidra",
     ]
     depends_on:
       - bsim_postgres
-      - minio
+      - rustfs
       - redis
 
   autotools_compiler1: 
     image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/AutotoolsCompiler",
-      "Autotools Compiler",
+      "package", "run", "-i", "-f", "AutotoolsCompiler",
       "-w", "redis://redis:6379/0",
-      "-r", "s3://minio:9000/uploads",
+      "-r", "s3://admin:password@rustfs:9000/uploads",
     ]
     depends_on:
       - ghidra_analyzer1
@@ -104,10 +102,9 @@ services:
     image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/AutotoolsCompiler",
-      "Autotools Compiler",
+      "package", "run", "-i", "-f", "AutotoolsCompiler",
       "-w", "redis://redis:6379/0",
-      "-r", "s3://minio:9000/uploads",
+      "-r", "s3://admin:password@rustfs:9000/uploads",
     ]
     depends_on:
       - ghidra_analyzer1
@@ -117,10 +114,9 @@ services:
     image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/uClibcCompiler",
-      "uClibc Compiler",
+      "package", "run", "-i", "-f", "uClibcCompiler",
       "-w", "redis://redis:6379/0",
-      "-r", "s3://minio:9000/uploads",
+      "-r", "s3://admin:password@rustfs:9000/uploads",
     ]
     depends_on:
       - ghidra_analyzer1
@@ -130,10 +126,9 @@ services:
     image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/uClibcPreprocessor",
-      "uClibc Preprocessor",
+      "package", "run", "-i", "-f", "uClibcPreprocessor",
       "-w", "redis://redis:6379/0",
-      "-r", "s3://minio:9000/uploads",
+      "-r", "s3://admin:password@rustfs:9000/uploads",
     ]
     depends_on:
       - uclibc_compiler
@@ -142,10 +137,9 @@ services:
     image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/LinuxKernelCompiler",
-      "Linux Kernel Compiler",
+      "package", "run", "-i", "-f", "LinuxKernelCompiler",
       "-w", "redis://redis:6379/0",
-      "-r", "s3://minio:9000/uploads",
+      "-r", "s3://admin:password@rustfs:9000/uploads",
     ]
     depends_on:
       - ghidra_analyzer1
@@ -155,10 +149,9 @@ services:
     image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/LinuxKernelCompiler",
-      "Linux Kernel Compiler",
+      "package", "run", "-i", "-f", "LinuxKernelCompiler",
       "-w", "redis://redis:6379/0",
-      "-r", "s3://minio:9000/uploads",
+      "-r", "s3://admin:password@rustfs:9000/uploads",
     ]
     depends_on:
       - ghidra_analyzer1
@@ -168,10 +161,9 @@ services:
     image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
     restart: unless-stopped
     command: [
-      "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GitScrapper",
-      "Git Scrapper",
+      "package", "run", "-i", "-f", "GitScrapper",
       "-w", "redis://redis:6379/0",
-      "-r", "s3://minio:9000/uploads",
+      "-r", "s3://admin:password@rustfs:9000/uploads",
     ]
     depends_on:
       - kernel_compiler1

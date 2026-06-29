@@ -13,6 +13,19 @@ from sighthouse.core.utils import (
 
 
 class GitScrapper(Scrapper):
+    """Git scrapper worker.
+
+    Recognised repository configuration (`repositories`):
+    repositories (list[dict]): List of repositories to process.
+        name (str):             Repository identifier (required, e.g. "linux").
+        url (str):              Git repository URL (required,
+                                e.g. "https://github.com/torvalds/linux/").
+        submodule (bool):       Whether to clone submodules recursively
+                                (optional, defaults to `false`).
+        branches (list[str]):   List of branches or tags to process
+                                (required, e.g. ["v2.6.15", "v2.6.16"]).
+
+    """
 
     def __init__(
         self,
@@ -38,7 +51,6 @@ class GitScrapper(Scrapper):
 
         Returns:
             list[dict]: The list of repositories objects.
-
         """
 
         # Check top-level key
@@ -78,6 +90,15 @@ class GitScrapper(Scrapper):
                     "'branches' in repository #{} must be a list of strings.".format(
                         idx
                     )
+                )
+
+            submodule = repo.get("submodule")
+            if submodule is None:
+                # Default value
+                repo["submodule"] = False
+            elif not isinstance(submodule, bool):
+                raise TypeError(
+                    "'submodule' in repository #{} must be a boolean".format(idx)
                 )
 
         return repositories
@@ -181,6 +202,43 @@ class GitScrapper(Scrapper):
             self.log("Error checking out '{}': {}".format(ref, e.stderr))
             return False
 
+    def fetch_submodules(self, repo_path: Path) -> bool:
+        """Fetch git submodules from the given repository
+
+        Args:
+            repo_path (Path): The root path of the repository to fetch the submodules.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        # Ensure repository path exists
+        if not repo_path.exists():
+            self.log("Error: Repository path '{}' does not exist.".format(repo_path))
+            return False
+
+        command = [
+            "git",
+            "--work-tree=.",
+            "-C",
+            str(repo_path),
+            "submodule",
+            "update",
+            "--init",
+            "--recursive",
+        ]
+
+        try:
+            result, _, stderr = run_process(command, capture_output=True)
+            if result == 0:
+                self.log("Successfully fetched submodules")
+                return True
+            else:
+                self.log("Error fetching out submodules: {}".format(stderr))
+                return False
+        except Exception as e:
+            self.log("Error fetching out submodules: {}".format(e.stderr))
+            return False
+
     def pack_repo(self, repo_path: Path, hash: str) -> str:
         """
         Packs all files from the repository into a tar.gz archive, excluding .git directory and its contents.
@@ -224,6 +282,10 @@ class GitScrapper(Scrapper):
                 for branch in repo["branches"]:
                     # Checkout the repo for the given commit/tag
                     if not self.checkout_git_repo(branch, tmpdir):
+                        break
+
+                    # Fetch submodules if enabled
+                    if repo["submodule"] and not self.fetch_submodules(tmpdir):
                         break
 
                     hash = self.get_commit_from_tag(branch, tmpdir)

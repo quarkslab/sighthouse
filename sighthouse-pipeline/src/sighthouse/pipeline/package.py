@@ -115,6 +115,9 @@ class PackageLoader:
     """
 
     DEFAULT_PACKAGE_PATH = get_appdata_dir() / "packages"
+    # Modules shipped with sighthouse-pipeline. Resolved relative to this file so
+    # it does not depend on the Python version or the install location.
+    CORE_MODULES_PATH = Path(__file__).parent / "core_modules"
 
     def __init__(self, logger: Logger, paths: Optional[List[Path | str]] = None):
         """
@@ -343,20 +346,56 @@ class PackageLoader:
         self._logger.debug(f"Package '{meta.name}' loaded successfully")
         return True
 
+    def _resolve_source(self, source: Path | str) -> Path:
+        """
+        Resolve a package source to a filesystem path. A package can be referenced
+        either by a filesystem path or by the name of one of the modules bundled
+        with sighthouse under ``core_modules/`` (Filesystem always take precedence).
+
+        Args:
+            source (Path | str): Path to a package, or the name of a bundled
+                                 core module (e.g. "GhidraAnalyzer").
+
+        Returns:
+            Path: The resolved path. If neither the path nor a matching bundled
+                  module exists, the original path is returned unchanged so that
+                  callers can report a meaningful error.
+        """
+        source = Path(source)
+        if source.exists():
+            return source
+
+        bundled = self.CORE_MODULES_PATH / source.name
+        if bundled.exists():
+            self._logger.debug(
+                f"Resolved '{source}' to bundled core module '{bundled}'"
+            )
+            return bundled
+
+        return source
+
     def install(
         self, source: Path | str, overwrite: bool = False, quick_check: bool = True
-    ) -> bool:
+    ) -> Optional[PackageMetadata]:
         """
         Install a module from a directory or a .tar.gz archive.
 
+        The source may be a filesystem path or the name of a bundled core
+        module (resolved via :meth:`_resolve_source`).
+
         Args:
             source (Path | str): Path to the source directory or .tar.gz file
-                                 containing the package.
+                                 containing the package, or the name of a
+                                 bundled core module.
             overwrite (bool): Whether to overwrite existing installation.
             quick_check (bool): Perform quick validation (metadata only) if True.
+
+        Returns:
+            PackageMetadata | None: The metadata of the installed package on
+                                    success (with ``path`` pointing at the
+                                    installed location), or None on failure.
         """
-        if isinstance(source, str):
-            source = Path(source)
+        source = self._resolve_source(source)
 
         temp_dir = None
 
@@ -375,14 +414,14 @@ class PackageLoader:
                 if len(extracted_items) != 1 or not extracted_items[0].is_dir():
                     self._logger.error(f"Invalid archive structure for '{source}'")
                     shutil.rmtree(temp_dir)
-                    return False
+                    return None
                 source = Path(extracted_items[0])
                 self._logger.debug(f"Extracted archive '{source.name}' to '{temp_dir}'")
             except Exception as e:
                 self._logger.error(f"Failed to extract archive '{source}': {e}")
                 if temp_dir and temp_dir.exists():
                     shutil.rmtree(temp_dir)
-                return False
+                return None
 
         # Validate source path
         if not source.exists() or not source.is_dir():
@@ -391,7 +430,7 @@ class PackageLoader:
             )
             if temp_dir and temp_dir.exists():
                 shutil.rmtree(temp_dir)
-            return False
+            return None
 
         # Run validation
         self._logger.debug(f"Validating module '{source.name}' before install.")
@@ -401,7 +440,7 @@ class PackageLoader:
             )
             if temp_dir and temp_dir.exists():
                 shutil.rmtree(temp_dir)
-            return False
+            return None
 
         # Metadata is not None at this point
         metadata = self.load_metadata(source)
@@ -419,7 +458,7 @@ class PackageLoader:
                 )
                 if temp_dir and temp_dir.exists():
                     shutil.rmtree(temp_dir)
-                return False
+                return None
 
             self._logger.warning(
                 f"Overwriting existing module '{module_name}' at {dest_dir}"
@@ -437,12 +476,12 @@ class PackageLoader:
             # Update package location now that it is installed
             metadata.path = dest_dir
             self._metadata[metadata.name] = metadata
-            return True
+            return metadata
         except Exception as e:
             self._logger.error(f"Error while installing module '{module_name}': {e}")
             if temp_dir and temp_dir.exists():
                 shutil.rmtree(temp_dir)
-            return False
+            return None
 
     def export_package(self, name: str, destination: Path | str) -> bool:
         """

@@ -416,7 +416,7 @@ class CommonWorker:
         )
         self._logger.error("%s\nTraceback: %s", msg, einfo)
         if self.__repo and not self.__repo.push_file(
-            f"failed/{module}/{job_id}.json", json.dumps(job).encode("utf-8")
+            f"failed/{module}/{job_id}.json", json.dumps(job.to_dict()).encode("utf-8")
         ):
             self._logger.error("result Task couldn't be uploaded")
 

@@ -12,6 +12,7 @@ RUN apt-get -y update && apt-get install --no-install-recommends -y libsqlite3-0
                                             python3-venv \
                                             python3-pip \
                                             make \
+                                            cmake \
                                             autotools-dev \
                                             autoconf \
                                             build-essential \
@@ -26,9 +27,14 @@ RUN apt-get -y update && apt-get install --no-install-recommends -y libsqlite3-0
                                             elfutils \
                                             libssl-dev \
                                             gcc-aarch64-linux-gnu \
+                                            libc6-dev-arm64-cross \
                                             gcc-arm-linux-gnueabi \
+                                            libc6-dev-armhf-cross \
+                                            libc6-dev-armel-cross \
                                             gcc-mips-linux-gnu \
+                                            libc6-dev-mips32-mips64-cross \
                                             gcc-mipsel-linux-gnu \
+                                            libc6-dev-mips64-mipsel-cross \
                                             && apt-get clean \
                                             && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives /tmp/* /var/tmp/*
 

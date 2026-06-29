@@ -19,6 +19,7 @@ from sighthouse.client.SightHouseClient import (
     SightHouseAnalysis,
     Section,
     Function,
+    AnalysisOptions,
     get_hash,
 )
 
@@ -124,11 +125,9 @@ class SightHouseIDAPluginMod(ida_idaapi.plugmod_t):
                 url,
                 username,
                 password,
-                verify_host,
-                force_submission,
-                options={
-                    "BobRoss": bob_ross,
-                },
+                verify_host=verify_host,
+                force_submission=force_submission,
+                options=AnalysisOptions(bob_ross=bob_ross, auto_analysis=False),
             )
             s.run()
         else:
@@ -223,14 +222,13 @@ class SightHouseIDAAnalysis(SightHouseAnalysis):
         password: str,
         verify_host: bool = True,
         force_submission: bool = False,
-        options=None,
+        options: AnalysisOptions = None,
     ) -> None:
-        logger = LoggingIDASighthouse()
         super().__init__(
+            url,
             username,
             password,
-            url,
-            logger,
+            LoggingIDASighthouse(),
             verify_host,
             force_submission,
             options=options,

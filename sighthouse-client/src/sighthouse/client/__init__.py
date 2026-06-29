@@ -5,4 +5,5 @@ from .SightHouseClient import (
     Function,
     Signature,
     Match,
+    AnalysisOptions,
 )

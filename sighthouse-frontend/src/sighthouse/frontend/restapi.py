@@ -22,7 +22,15 @@ from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
 
 from sighthouse.frontend.database import FrontendDatabase, RestError
-from sighthouse.frontend.model import User, File, Program, Section, Function, Analysis
+from sighthouse.frontend.model import (
+    User,
+    File,
+    Program,
+    Section,
+    Function,
+    Analysis,
+    AnalysisOptions,
+)
 from sighthouse.core.utils.analyzer import get_ghidra_languages
 from sighthouse.core.utils.api import ServerThread
 from sighthouse.core.utils import parse_uri
@@ -286,7 +294,7 @@ class FrontendRestAPI(ServerThread):
                     ```
             """
             files = self.__database.get_user_file(get_current_user().id)
-            return jsonify({"files": f.to_dict() for f in files}), 200
+            return jsonify({"files": [f.to_dict() for f in files]}), 200
 
         @self.__app.route("/api/v1/uploads/<string:hash>", methods=["DELETE"])
         @login_required
@@ -687,10 +695,8 @@ class FrontendRestAPI(ServerThread):
             if self.__database.repo.push_file(
                 upload_file_config, json.dumps(config).encode("utf-8")
             ):
-                data = request.get_json()
-                options = {}
-                if isinstance(data, dict):
-                    options = data
+                # Validate analysis options (or use default)
+                options = AnalysisOptions.from_dict(request.get_json() or {})
 
                 self.__celery_app.send_task(
                     "frontendanalyzer.do_work",
@@ -701,7 +707,7 @@ class FrontendRestAPI(ServerThread):
                             "config": str(
                                 self.__database.repo.get_sharefile(upload_file_config)
                             ),
-                            "options": options,
+                            "options": options.to_dict(),
                         }
                     },
                 )

@@ -3,27 +3,32 @@
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
 PIPELINE_DB="$SCRIPT_DIR/../pipeline/data/postgres"
 
+set -a
+. ${SCRIPT_DIR}/../../.env
+. ${SCRIPT_DIR}/../../.version
+set +a
+
 # Define paths for the key and certificate
 KEY_PATH="nginx/certs/server.key"
 CRT_PATH="nginx/certs/server.crt"
 
 mkdir -p "$SCRIPT_DIR/data/frontend"
 mkdir -p "$SCRIPT_DIR/data/redis"
-mkdir -p "$SCRIPT_DIR/data/minio"
+mkdir -p "$SCRIPT_DIR/data/rustfs"
 
 # Copy pipeline database if one exist
-if [ -d $PIPELINE_DB ]; then
-  cp -r $PIPELINE_DB "$SCRIPT_DIR/data/bsim"
+if [ -d "$PIPELINE_DB" ]; then
+  cp -r "$PIPELINE_DB" "$SCRIPT_DIR/data/bsim"
 else
   mkdir -p "$SCRIPT_DIR/data/bsim"
 fi
 
 # Generate certificate if none exist
-if [[ ! -f "$KEY_PATH" && ! -f "$CRT_PATH" ]]; then
+if [ ! -f "$KEY_PATH" ] && [ ! -f "$CRT_PATH" ]; then
   echo "No certificates found under $KEY_PATH/$CRT_PATH."
-  if ! command -v openssl &> /dev/null; then
-      echo "OpenSSL is not installed. Please install OpenSSL first or provide your own certificates."
-      exit 1
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "OpenSSL is not installed. Please install OpenSSL first or provide your own certificates."
+    exit 1
   fi
   echo "Generating self-signed certificates."
   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
@@ -41,11 +46,11 @@ if [[ ! -f "$KEY_PATH" && ! -f "$CRT_PATH" ]]; then
   echo "#                                           #"
   echo "#############################################"
   echo ""
-else 
+else
   echo "Found certificates under $KEY_PATH/$CRT_PATH."
-fi 
+fi
 
 chown -R 1000:1000 "$SCRIPT_DIR/data"
 
 echo "Starting docker compose file."
-docker compose --env-file ${SCRIPT_DIR}/../../.env -f "$SCRIPT_DIR/docker-compose.yml" up -d
+docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d

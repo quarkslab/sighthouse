@@ -44,17 +44,14 @@ def run_package_cmd_handler(self, args: Namespace, remaining: List[str]) -> None
     package = args.package
 
     if args.install:
-        package = Path(package)
-        if loader.install(package, overwrite=args.force):
-            print("Successfully installed package")
-            meta = loader.load_metadata(package)
-            if not meta:
-                print("Fail to get metadata of installed package")
-                return
-            package = meta.name
-        else:
+        meta = loader.install(package, overwrite=args.force)
+        if not meta:
             print("Fail to install package")
             return
+        print("Successfully installed package")
+        # install() resolves the source (path or bundled core-module name) and
+        # returns the installed package's metadata, so run it by its real name.
+        package = meta.name
 
     job = None
     job_path = Path(args.job) if args.job else None
@@ -174,7 +171,9 @@ def add_to_cli(app: SightHouseCommandLine) -> None:
         )
         if parser_package_install is not None:
             parser_package_install.add_argument(
-                "package", help="The path to the package to install"
+                "package",
+                help="Path to the package, or the name of a bundled core "
+                "module (e.g. GhidraAnalyzer), to install",
             )
             parser_package_install.add_argument(
                 "-f", "--force", action="store_true", help="Overwrite existing package"
@@ -210,7 +209,10 @@ def add_to_cli(app: SightHouseCommandLine) -> None:
                 help="Install the given package before running it",
             )
             parser_package_run.add_argument(
-                "package", help="The path to the package to run"
+                "package",
+                help="The name of the package to run, or (with -i) the path to "
+                "the package or the name of a bundled core module to install "
+                "and run (e.g. GhidraAnalyzer)",
             )
 
         parser_package.add_command(

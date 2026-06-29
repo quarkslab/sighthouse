@@ -13,6 +13,7 @@ from celery.utils.log import get_logger
 from sighthouse.core.utils.repo import Repo
 from sighthouse.core.utils.analyzer import run_ghidra_script
 from sighthouse.frontend.bobross import Match, Function, converge_metadata_selection
+from sighthouse.frontend.model import AnalysisOptions
 from typing import List, Dict, Any
 from logging import Logger
 import requests
@@ -172,7 +173,7 @@ class Worker:
                 config_path = temp_path / "config.json"
                 output_path = temp_path / "output.json"
                 error_path = temp_path / "error.log"
-                options = job_data["options"]
+                options = AnalysisOptions.from_dict(job_data["options"])
 
                 binary_data = Repo.download_sharefile(job_data["binary"])
                 config_data = Repo.download_sharefile(job_data["config"])
@@ -187,6 +188,8 @@ class Worker:
                         "file": str(binary_path),
                         "output": str(output_path),
                         "error": str(error_path),
+                        # Pass some of the options to Ghidra
+                        "options": {"auto_analysis": options.auto_analysis},
                     }
                 )
 
@@ -218,7 +221,7 @@ class Worker:
                     )
 
                     # @TODO: Should we run the Algorithm per section or for whole program?
-                    if options.get("BobRoss"):
+                    if options.bob_ross:
                         functions: List[Function] = [
                             Function.from_dict(f) for f in section["functions"]
                         ]

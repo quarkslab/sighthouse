@@ -2,8 +2,9 @@
 
 from typing import Any, Optional
 from pathlib import Path
-from io import BytesIO
-from minio import Minio
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
 
 from sighthouse.core.utils import parse_uri, download_file  # type: ignore[import-untyped]
 
@@ -33,11 +34,16 @@ class Repo:
                 raise FileNotFoundError(f"Directory '{full_path}' does not exists")
 
         elif self._uri["type"] == "s3":
-            self._client = Minio(
-                endpoint=f"{self._uri['host']}:{self._uri['port']}",
-                access_key=self._uri["user"],
-                secret_key=self._uri["password"],
-                secure=secure,
+            scheme = "https" if secure else "http"
+            self._client = boto3.client(
+                "s3",
+                endpoint_url=f"{scheme}://{self._uri['host']}:{self._uri['port']}",
+                aws_access_key_id=self._uri["user"],
+                aws_secret_access_key=self._uri["password"],
+                region_name="us-east-1",
+                config=Config(
+                    signature_version="s3v4", s3={"addressing_style": "path"}
+                ),
             )
         else:
             raise ValueError(f"Unsupported URI scheme: {self._uri.get('type')}")
@@ -45,6 +51,13 @@ class Repo:
     def __repr__(self) -> str:
         """Return a textual representation of this object"""
         return f'<{self.__class__.__name__}(uri="{self._uri["uri"]}")>'
+
+    def _s3_key(self, upload_path: str) -> str:
+        """
+        Build the S3 object key for the given upload path.
+        Strip / as start not supported on RustFS
+        """
+        return str(Path(self._uri["directory"], upload_path).resolve()).lstrip("/")
 
     def push_file(self, upload_path: str, content: bytes) -> bool:
         """
@@ -80,10 +93,9 @@ class Repo:
 
         elif self._uri["type"] == "s3":
             self._client.put_object(
-                self._uri["dbname"],
-                str(Path(self._uri["directory"], upload_path).resolve()),
-                BytesIO(content),
-                len(content),
+                Bucket=self._uri["dbname"],
+                Key=self._s3_key(upload_path),
+                Body=content,
             )
 
         else:
@@ -125,9 +137,9 @@ class Repo:
                     break
 
         elif self._uri["type"] == "s3":
-            self._client.remove_object(
-                self._uri["dbname"],
-                str(Path(self._uri["directory"], upload_path).resolve()),
+            self._client.delete_object(
+                Bucket=self._uri["dbname"],
+                Key=self._s3_key(upload_path),
             )
 
         else:
@@ -165,11 +177,16 @@ class Repo:
                 return f.read()
 
         elif self._uri["type"] == "s3":
-            response = self._client.get_object(
-                self._uri["dbname"],
-                str(Path(self._uri["directory"], upload_path).resolve()),
-            )
-            return response.data if response else None
+            try:
+                response = self._client.get_object(
+                    Bucket=self._uri["dbname"],
+                    Key=self._s3_key(upload_path),
+                )
+            except ClientError as exc:
+                if exc.response["Error"]["Code"] in ("NoSuchKey", "404"):
+                    return None
+                raise
+            return response["Body"].read()
 
         else:
             raise ValueError(f"Unsupported URI scheme: {self._uri.get('type')}")
@@ -207,12 +224,13 @@ class Repo:
             return list(map(str, full_path.iterdir()))
 
         if self._uri["type"] == "s3":
-            return list(
-                map(
-                    lambda e: e.object_name,
-                    self._client.list_objects(self._uri["dbname"], prefix=str(path)),
-                )
-            )
+            paginator = self._client.get_paginator("list_objects_v2")
+            keys: list[str] = []
+            for page in paginator.paginate(
+                Bucket=self._uri["dbname"], Prefix=str(path).lstrip("/")
+            ):
+                keys.extend(obj["Key"] for obj in page.get("Contents", []))
+            return keys
 
         raise ValueError(f"Unsupported URI scheme: {self._uri.get('type')}")
 
@@ -247,10 +265,12 @@ class Repo:
             return full_path.absolute().as_posix()
 
         if self._uri["type"] == "s3":
-            return self._client.get_presigned_url(
-                "GET",
-                self._uri["dbname"],
-                str(Path(self._uri["directory"], upload_path).resolve()),
+            return self._client.generate_presigned_url(
+                "get_object",
+                Params={
+                    "Bucket": self._uri["dbname"],
+                    "Key": self._s3_key(upload_path),
+                },
             )
 
         raise ValueError(f"Unsupported URI scheme: {self._uri.get('type')}")

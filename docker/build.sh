@@ -5,12 +5,10 @@ set -a
 . ${SCRIPT_DIR}/../.env
 . ${SCRIPT_DIR}/../.version
 set +a
-SIGHTHOUSE_DIR="$SCRIPT_DIR/../sighthouse"
 
 set -ex
 # Clean build directory before building dockers
 $SCRIPT_DIR/clean.sh
-# make -C $SIGHTHOUSE_DIR clean
 # Build all the dockers
 $SCRIPT_DIR/docker-ghidra/build.sh
 $SCRIPT_DIR/docker-ghidra-python3/build.sh

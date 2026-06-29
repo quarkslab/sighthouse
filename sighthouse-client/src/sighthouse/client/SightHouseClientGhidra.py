@@ -40,6 +40,18 @@ from java.awt.event import ActionListener
 
 from typing import Tuple, List
 
+import argparse
+import sys
+import time
+import jpype
+from sighthouse.client.SightHouseClient import (
+    SightHouseAnalysis,
+    LoggingSighthouse,
+    Section,
+    Function,
+    AnalysisOptions,
+)
+
 PREF_KEY_URL = "sighthouse.form.url"
 PREF_KEY_USERNAME = "sighthouse.form.username"
 PREF_KEY_PASSWORD = "sighthouse.form.password"
@@ -47,23 +59,11 @@ PREF_KEY_VERIFY_HOST = "sighthouse.form.verify_host"
 PREF_KEY_FORCE_SUBMISSION = "sighthouse.form.force_submission"
 
 
-import argparse
-import sys
-import jpype
-from sighthouse.client.SightHouseClient import (
-    SightHouseAnalysis,
-    LoggingSighthouse,
-    Section,
-    Function,
-)
-
-
 class LoggingGhidraSighthouse(LoggingSighthouse):
 
     def __init__(self, ghidrascript: GhidraScript) -> None:
         """Initialize logging class"""
         self._ghidrascript = ghidrascript
-        pass
 
     def error(self, message: str):
         """Show an error message
@@ -101,22 +101,27 @@ class SightHouseGhidraAnalysis(SightHouseAnalysis):
         password: str,
         verify_host: bool = True,
         force_submission: bool = False,
-        options: dict = None,
+        options: AnalysisOptions = None,
     ):
         """Initialize SightHouseGhidraAnalysis
 
         Args:
             prgm (Program): program to analyze
-            url (str): server url
-            username (str): username to connect to it
-            password (str): password to connect to it
+            url (str): URL of Sighthouse server
+            username (str): username to connect to server
+            password (str): password to connect to server
+            verify_host (bool): Option to enable or disable certificate verification
+            force_submission (bool): Delete cached information on the server side if any
+                                     before starting a new analysis
+            options (AnalysisOptions | None): Options for the analysis
         """
         self.prgm = prgm
         self.ghidrascript = this
+        self._monitor = None
         super().__init__(
+            url,
             username,
             password,
-            url,
             LoggingGhidraSighthouse(self.ghidrascript),
             verify_host,
             force_submission,
@@ -133,6 +138,7 @@ class SightHouseGhidraAnalysis(SightHouseAnalysis):
         Args:
             message (str): message to show
         """
+        self._monitor.increment()
         print(message)
 
     def get_program_name(self) -> str:
@@ -192,11 +198,6 @@ class SightHouseGhidraAnalysis(SightHouseAnalysis):
                         "",
                     )
                 )
-        #   b.getStart().getOffset(), b.getEnd().getOffset(),  	b.getFileBytesOffset()
-        # 	isExecute()
-        #   isRead()
-        #   isWrite()
-        #   isInitialized()
         return res
 
     def get_hash_program(self) -> str:
@@ -264,10 +265,20 @@ class SightHouseGhidraAnalysis(SightHouseAnalysis):
         setPlateComment(addr, message)
         createBookmark(addr, "SightHouse matches", message)
 
+    def wait(self, seconds: int = 10) -> None:
+        """Wait using monitor so UI refresh
+
+        Args:
+            seconds (int): The number of seconds to wait for
+        """
+        for i in range(seconds):
+            self._monitor.increment()
+            time.sleep(1)
+
     def run(self, monitor) -> None:
         """Run the complete analysis"""
         self._monitor = monitor
-        self._monitor.initialize(10)
+        self._monitor.initialize(99999)
         # Create a transaction to save/rollback changes
         transaction = self.prgm.startTransaction(self.__class__.__name__)
         commit = True
@@ -492,11 +503,9 @@ class UserFormPlugin:
             password,
             verify_host,
             force_submission,
-            options={
-                "BobRoss": bob_ross,
-            },
+            options=AnalysisOptions(bob_ross=bob_ross, auto_analysis=False),
         )
-        analyzer.run(TaskMonitor.DUMMY)
+        analyzer.run(getMonitor())
 
     def show(self):
         """Display the dialog."""
@@ -528,6 +537,13 @@ if __name__ == "__main__":
         username = args.username
         password = args.password
 
-        print(url, username, password)
-        analyzer = SightHouseGhidraAnalysis(currentProgram, url, username, password)
+        analyzer = SightHouseGhidraAnalysis(
+            currentProgram,
+            url,
+            username,
+            password,
+            verify_host=False,
+            force_submission=True,
+            options=AnalysisOptions(bob_ross=False, auto_analysis=False),
+        )
         analyzer.run(TaskMonitor.DUMMY)

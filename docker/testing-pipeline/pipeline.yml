@@ -3,26 +3,27 @@ name: My pipeline
 description: A simple pipeline
 workers:
 
-  - name: fetch_glibc
+  - name: fetch_mbedtls
     package: Git Scrapper
-    target: compile_glibc
+    target: compile_mbedtls
     args:
       repositories:
         - name: libc
-          url: git://sourceware.org/git/glibc.git
+          url: https://github.com/Mbed-TLS/mbedtls
+          submodule: true
           branches:
-            - glibc-2.25.90
+            - mbedtls-4.0.0
+            - mbedtls-3.0.0
+            - mbedtls-2.0.0
 
-  # Glibc cannot be compiled without optimization
-  - name: compile_glibc
-    package: Autotools Compiler
+  - name: compile_mbedtls
+    package: Cmake Compiler
     target: analyzer
     foreach:
       - compiler_variants:
-          x86_64-O1:
-            cc: gcc
-            cflags: -O1 -Wno-error=array-parameter
-            configure_extra_args: --disable-werror
+          arm-O0:
+            cc: arm-linux-gnueabi-gcc
+            cflags: -O0
 
   - name: analyzer
     package: Ghidra Analyzer

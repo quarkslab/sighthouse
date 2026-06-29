@@ -434,7 +434,7 @@ class Analysis:
                           and 'info' (dict).
 
         Returns:
-            Match: An instance of the Analysis class.
+            Analysis: An instance of the Analysis class.
 
         Raises:
             ValueError: If any of the required fields are of the wrong type.
@@ -465,4 +465,58 @@ class Analysis:
             "program": self.program,
             "user": self.user,
             "info": self.info,
+        }
+
+
+class AnalysisOptions:
+    """Class that store analysis options for the frontend
+
+    This class holds all options relevant for running the analysis. Those options
+    can impact different steps. For instance, `bob_ross` is a post analysis option
+    while `auto_analysis` is relevant when running the analysis inside the ghidra
+    script.
+    """
+
+    def __init__(self, bob_ross: bool = False, auto_analysis: bool = False):
+        self.bob_ross = bob_ross
+        self.auto_analysis = auto_analysis
+
+    @staticmethod
+    def from_dict(data: dict) -> "AnalysisOptions":
+        """
+        Create an AnalysisOptions instance from a dictionary.
+
+        Args:
+            data (dict): A dictionary containing the analysis data.
+                         can include 'bob_ross' (bool/string)
+                         and 'auto_analysis' (bool/string).
+
+        Returns:
+            AnalysisOptions: An instance of the AnalysisOptions class.
+
+        Raises:
+            ValueError: If any of the required fields are of the wrong type.
+        """
+        if not isinstance(data, dict):
+            raise ValueError("data is not a dict")
+        if "bob_ross" in data and not isinstance(data["bob_ross"], bool):
+            raise ValueError("bob_ross must be a boolean")
+        if "auto_analysis" in data and not isinstance(data["auto_analysis"], bool):
+            raise ValueError("auto_analysis must be a boolean")
+
+        return AnalysisOptions(
+            bob_ross=data.get("bob_ross") or False,
+            auto_analysis=data.get("auto_analysis") or False,
+        )
+
+    def to_dict(self) -> dict:
+        """
+        Convert the AnalysisOptions instance to a dictionary.
+
+        Returns:
+            dict: A dictionary representation of the AnalysisOptions instance.
+        """
+        return {
+            "bob_ross": self.bob_ross,
+            "auto_analysis": self.auto_analysis,
         }
