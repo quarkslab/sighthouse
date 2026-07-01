@@ -39,7 +39,7 @@ def copy_client_script_to_idadir(idadir: Path) -> None:
 
     # Copy script
     with open(str(client_script), "r") as fpin:
-        with open(str(idadir / "SightHouseClientIDA.py"), "w") as fpout:
+        with open(str(plugin_dir / "SightHouseClientIDA.py"), "w") as fpout:
             fpout.write(fpin.read())
 
     print("Sighthouse client script installed!")
