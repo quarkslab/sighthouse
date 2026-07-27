@@ -96,15 +96,15 @@ def install(
 ) -> bool:
     if offer_venv:
         ghidra_venv_choice: str = input(
-            "Install into new Ghidra virtual environment (y/n)? "
+            "Install into new Ghidra virtual environment (Y/n)? "
         )
-        if ghidra_venv_choice.lower() in ("y", "yes"):
+        if ghidra_venv_choice.lower() in ("", "y", "yes"):
             venv_dir = get_ghidra_venv(install_dir)
             create_ghidra_venv(venv_dir)
             python_cmd = get_venv_exe(venv_dir)
         elif ghidra_venv_choice.lower() in ("n", "no"):
-            system_venv_choice: str = input("Install into system environment (y/n)? ")
-            if system_venv_choice.lower() not in ("y", "yes"):
+            system_venv_choice: str = input("Install into system environment (Y/n)? ")
+            if system_venv_choice.lower() not in ("", "y", "yes"):
                 print(
                     'Must answer "y" to the prior choices, or launch in an already active virtual environment.'
                 )
@@ -128,9 +128,9 @@ def upgrade(
     current_version = current_pyghidra_version
     if version_tuple(included_version) > version_tuple(current_version):
         choice: str = input(
-            f"Do you wish to upgrade PyGhidra {current_version} to {included_version} (y/n)? "
+            f"Do you wish to upgrade PyGhidra {current_version} to {included_version} (Y/n)? "
         )
-        if choice.lower() in ("y", "yes"):
+        if choice.lower() in ("", "y", "yes"):
             pip_args.append("-U")
             subprocess.check_call([python_cmd] + pip_args)
             return True
@@ -146,6 +146,23 @@ class Bundle:
         self.system = system
         self.enabled = enabled
         self.active = active
+
+    def __hash__(self) -> int:
+        return hash((self.file, self.system, self.enabled, self.active))
+
+    def __eq__(self, other: "Bundle") -> bool:
+        return (
+            self.file == other.file
+            and self.system == other.system
+            and self.enabled == other.enabled
+            and self.active == other.active
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f'Bundle(file="{self.file}", system={self.system}, '
+            f"enabled={self.enabled}, active={self.active})"
+        )
 
 
 def deserialize_bundles(settings: Path) -> List[Bundle]:
@@ -196,7 +213,8 @@ def deserialize_bundles(settings: Path) -> List[Bundle]:
     ):
         bundles.append(Bundle(file=f, system=s, enabled=en, active=ac))
 
-    return bundles
+    # Remove duplicates
+    return list(set(bundles))
 
 
 def serialize_bundles(settings: Path, bundles: List[Bundle]) -> None:
@@ -261,7 +279,8 @@ def serialize_bundles(settings: Path, bundles: List[Bundle]) -> None:
         )
         script_mgr.append(active_node)
 
-    for b in bundles:
+    # Dedup bundles
+    for b in set(bundles):
         file_node.append(ElementTree.Element("A", VALUE=b.file))
         system_node.append(
             ElementTree.Element("A", VALUE="true" if b.system else "false")
@@ -301,7 +320,7 @@ def get_suitable_bundles(settings: Path) -> List[Path]:
 
 def add_new_bundle(settings: Path, bundle: Path) -> None:
     bundles = deserialize_bundles(settings)
-    bundle.mkdir(exist_ok=True)
+    bundle.mkdir(parents=True, exist_ok=True)
     for b in bundles:
         bundle_path = Path(b.file.replace("$USER_HOME", str(Path.home())))
         if not b.enabled and not b.system and bundle == bundle_path:
@@ -331,6 +350,7 @@ def copy_client_script_to_bundle(bundle: Path) -> None:
         return
 
     # Copy script
+    bundle.mkdir(parents=True, exist_ok=True)
     with open(str(client_script), "r") as fpin:
         with open(str(bundle / "SightHouseClientGhidra.py"), "w") as fpout:
             fpout.write(fpin.read())
@@ -346,66 +366,56 @@ def copy_client_script(install_dir: Path) -> None:
         print(f"Error: Fail to find {settings.name}")
         return
 
+    default = Path.home() / "ghidra_scripts"
     bundles = get_enable_bundles(settings)
+    # No bundle found, likely a fresh install, add the default ones
     if len(bundles) == 0:
-        print("Error: No existing bundles found")
-        suitable = get_suitable_bundles(settings)
-        default = Path.home() / "ghidra_scripts"
-        for e in [
-            user_dir / "ghidra_scripts",
-            Path.home() / "ghidra_scripts",
-            default,
-        ]:  # Default directories
-            if e not in suitable:
-                suitable.append(e)
-
-        print("Found the following suitable bundles:")
-        for i, bundle in enumerate(suitable):
-            print(f" {i}: {bundle}")
-        print("")
-
-        choice = input(
-            f"Enter the number corresponding to the bundle to install (default: {default}): "
+        print("Warning: No existing bundles found, adding defaults ones")
+        suitables = set(get_suitable_bundles(settings))
+        # Default directories
+        suitables.update(
+            {
+                user_dir / "ghidra_scripts",
+                Path.home() / "ghidra_scripts",
+                default,
+            }
         )
-        try:
-            if choice.lower() in ["y", "yes"]:
-                choice = suitable.index(default)
-            else:
-                choice = int(choice)
-            if choice < 0 or choice >= len(suitable):
-                raise ValueError("Invalid range")
-            add_new_bundle(settings, suitable[choice])
-            copy_client_script_to_bundle(suitable[choice])
-        except ValueError:
-            print(f"Error: Invalid choice '{choice}', skipping")
+        bundles = list(suitables)
 
-    elif len(bundles) == 1:
+    # Now bundles contains at least one element
+    if len(bundles) == 1:
+        # Only a single choice
         choice = input(
-            f"Found only one bundle directory, do you want to copy script to '{bundles[0]}' (y/n)? "
+            f"Found only one bundle directory, do you want to copy script to '{bundles[0]}' (Y/n)? "
         )
-        if choice.lower() in ("y", "yes"):
+        if choice.lower() in ("", "y", "yes"):
             copy_client_script_to_bundle(bundles[0])
         else:
             print("Error: Skipping install script")
-    else:
-        print("Multiples bundles detected:")
-        for i, bundle in enumerate(bundles):
-            print(f" {i}: {bundle}")
-        print("")
+        return
 
-        choice = input("Enter the number corresponding to the bundle to install: ")
-        try:
+    print("Found the following suitable bundles:")
+    for i, bundle in enumerate(bundles):
+        print(f" {i}: {bundle}")
+    print("")
+
+    choice = input(
+        f"Enter the number corresponding to the bundle to install (default: {default} [Y/n]): "
+    )
+    try:
+        if choice.lower() in ["", "y", "yes"]:
+            choice = bundles.index(default)
+        else:
             choice = int(choice)
-            if choice < 0 or choice >= len(bundles):
-                raise ValueError("Invalid range")
-            copy_client_script_to_bundle(bundles[choice])
-        except ValueError:
-            print(f"Error: Invalid choice '{choice}', skipping")
+        if choice < 0 or choice >= len(bundles):
+            raise ValueError("Invalid range")
+        add_new_bundle(settings, bundles[choice])
+        copy_client_script_to_bundle(bundles[choice])
+    except ValueError:
+        print(f"Error: Invalid choice '{choice}', skipping")
 
 
 def main(install_dir: str) -> None:
-    # Parse command line arguments
-
     # Setup variables
     install_dir = Path(install_dir)
     python_cmd: str = sys.executable
@@ -471,4 +481,7 @@ if __name__ == "__main__":
     parser.add_argument("ghidra_dir", help="Path to your installation of Ghidra")
 
     args = parser.parse_args()
-    main(args.ghidra_dir)
+    try:
+        main(args.ghidra_dir)
+    except KeyboardInterrupt:
+        print("\nInterrupted")
