@@ -12,7 +12,11 @@ from celery.utils.log import get_logger
 
 from sighthouse.core.utils.repo import Repo
 from sighthouse.core.utils.analyzer import run_ghidra_script
-from sighthouse.frontend.bobross import Match, Function, converge_metadata_selection
+from sighthouse.frontend.bobross import (
+    BobRossConfig,
+    BobRossFunction,
+    converge_metadata_selection,
+)
 from sighthouse.frontend.model import AnalysisOptions
 from typing import List, Dict, Any
 from logging import Logger
@@ -222,20 +226,14 @@ class Worker:
 
                     # @TODO: Should we run the Algorithm per section or for whole program?
                     if options.bob_ross:
-                        functions: List[Function] = [
-                            Function.from_dict(f) for f in section["functions"]
+                        functions: List[BobRossFunction] = [
+                            BobRossFunction.from_analysis_dict(f)
+                            for f in section["functions"]
                         ]
-                        for function in functions:
-                            function.sort_matches_deterministic()
-
                         result = converge_metadata_selection(
-                            functions,
-                            distance=64,
-                            bonus_malus=0.0935,
-                            max_iterations=1,
-                            influence_sim=0.85,
+                            functions, BobRossConfig(), logger=self.logger
                         )
-                        section["functions"] = [f.to_dict() for f in result]
+                        section["functions"] = [f.to_analysis_dict() for f in result]
 
                     # Step 4: Upload matches using client API
                     for function in section["functions"]:
@@ -244,7 +242,7 @@ class Worker:
                                 program["id"],
                                 section["id"],
                                 function["id"],
-                                self.__enhance_matching_result(function["matches"]),
+                                self.compute_score(function["matches"]),
                             )
 
                 client.update_status(
@@ -267,9 +265,10 @@ class Worker:
             ]
         )
 
-    def __enhance_matching_result(self, matches: List[Dict]) -> List[Dict]:
+    def compute_score(self, matches: List[Dict]) -> List[Dict]:
         """Algorithm that aim to increase the relevance of the raw matches return
-        by analyzers
+        by analyzers. Compute a score based on the significance, common matches
+        get their significance averaged.
         """
         results = {}
         if not matches:

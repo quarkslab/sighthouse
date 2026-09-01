@@ -20,8 +20,8 @@ class User(UserMixin):
         self.name = name
         self.hash = hash
 
-    @staticmethod
-    def from_dict(data: dict) -> "User":
+    @classmethod
+    def from_dict(cls, data: dict) -> "User":
         """
         Create a User instance from a dictionary.
 
@@ -37,15 +37,15 @@ class User(UserMixin):
         """
         if not isinstance(data, dict):
             raise ValueError("data is not a dict")
-        if not isinstance(data.get("id", User.INVALID_ID), int):
+        if not isinstance(data.get("id", cls.INVALID_ID), int):
             raise ValueError("id must be an integer")
         if not isinstance(data.get("name"), str):
             raise ValueError("name must be a string")
         if not isinstance(data.get("hash"), str):
             raise ValueError("hash must be a string")
 
-        return User(
-            id=data.get("id", User.INVALID_ID), name=data["name"], hash=data["hash"]
+        return cls(
+            id=data.get("id", cls.INVALID_ID), name=data["name"], hash=data["hash"]
         )
 
     def to_dict(self) -> dict:
@@ -79,8 +79,8 @@ class File:
         if self.hash is None and self.content:
             self.hash = get_hash(self.content)
 
-    @staticmethod
-    def from_dict(data: dict) -> "File":
+    @classmethod
+    def from_dict(cls, data: dict) -> "File":
         """
         Create a File instance from a dictionary.
 
@@ -97,7 +97,7 @@ class File:
         """
         if not isinstance(data, dict):
             raise ValueError("data is not a dict")
-        if not isinstance(data.get("id", File.INVALID_ID), int):
+        if not isinstance(data.get("id", cls.INVALID_ID), int):
             raise ValueError("id must be an integer")
         if not isinstance(data.get("name"), str):
             raise ValueError("name must be a string")
@@ -108,8 +108,8 @@ class File:
         # if not isinstance(data.get("content"), bytes):
         #    raise ValueError("hash must be a string")
 
-        return File(
-            id=data.get("id", File.INVALID_ID),
+        return cls(
+            id=data.get("id", cls.INVALID_ID),
             name=data["name"],
             user=data["user"],
             hash=data["hash"],
@@ -137,8 +137,8 @@ class Program:
         self.language = language
         self.file = file
 
-    @staticmethod
-    def from_dict(data: dict) -> "Program":
+    @classmethod
+    def from_dict(cls, data: dict) -> "Program":
         """
         Create a Program instance from a dictionary.
 
@@ -155,7 +155,7 @@ class Program:
         """
         if not isinstance(data, dict):
             raise ValueError("data is not a dict")
-        if not isinstance(data.get("id", Program.INVALID_ID), int):
+        if not isinstance(data.get("id", cls.INVALID_ID), int):
             raise ValueError("id must be an integer")
         if not isinstance(data.get("name"), str):
             raise ValueError("name must be a string")
@@ -166,8 +166,8 @@ class Program:
         if not isinstance(data.get("file"), int):
             raise ValueError("file must be an integer")
 
-        return Program(
-            id=data.get("id", Program.INVALID_ID),
+        return cls(
+            id=data.get("id", cls.INVALID_ID),
             name=data["name"],
             user=data["user"],
             language=data["language"],
@@ -215,8 +215,8 @@ class Section:
         self.perms = perms
         self.kind = kind
 
-    @staticmethod
-    def from_dict(data: dict) -> "Section":
+    @classmethod
+    def from_dict(cls, data: dict) -> "Section":
         """
         Create a Section instance from a dictionary.
 
@@ -234,7 +234,7 @@ class Section:
         """
         if not isinstance(data, dict):
             raise ValueError("data is not a dict")
-        if not isinstance(data.get("id", Section.INVALID_ID), int):
+        if not isinstance(data.get("id", cls.INVALID_ID), int):
             raise ValueError("id must be an integer")
         if not isinstance(data.get("name"), str):
             raise ValueError("name must be a string")
@@ -251,8 +251,8 @@ class Section:
         if not isinstance(data.get("kind"), str):
             raise ValueError("kind must be a string")
 
-        return Section(
-            id=data.get("id", Section.INVALID_ID),
+        return cls(
+            id=data.get("id", cls.INVALID_ID),
             name=data["name"],
             program=data["program"],
             file_offset=data["file_offset"],
@@ -293,8 +293,8 @@ class Function:
         self.section = section
         self.details = details
 
-    @staticmethod
-    def from_dict(data: dict) -> "Function":
+    @classmethod
+    def from_dict(cls, data: dict) -> "Function":
         """
         Create a Function instance from a dictionary.
 
@@ -311,7 +311,7 @@ class Function:
         """
         if not isinstance(data, dict):
             raise ValueError("data is not a dict")
-        if not isinstance(data.get("id", Function.INVALID_ID), int):
+        if not isinstance(data.get("id", cls.INVALID_ID), int):
             raise ValueError("id must be an integer")
         if not isinstance(data.get("name"), str):
             raise ValueError("name must be a string")
@@ -322,8 +322,8 @@ class Function:
         if not isinstance(data.get("details", {}), dict):
             raise ValueError("details must be a dict")
 
-        return Function(
-            id=data.get("id", Function.INVALID_ID),
+        return cls(
+            id=data.get("id", cls.INVALID_ID),
             name=data["name"],
             offset=data["offset"],
             section=data["section"],
@@ -357,8 +357,8 @@ class Match:
         self.function = function
         self.metadata = metadata
 
-    @staticmethod
-    def from_dict(data: dict) -> "Match":
+    @classmethod
+    def from_dict(cls, data: dict) -> "Match":
         """
         Create a Match instance from a dictionary.
 
@@ -375,7 +375,7 @@ class Match:
         """
         if not isinstance(data, dict):
             raise ValueError("data is not a dict")
-        if not isinstance(data.get("id", Match.INVALID_ID), int):
+        if not isinstance(data.get("id", cls.INVALID_ID), int):
             raise ValueError("id must be an integer")
         if not isinstance(data.get("name"), str):
             raise ValueError("name must be a string")
@@ -384,7 +384,7 @@ class Match:
         if not isinstance(data.get("metadata"), dict):
             raise ValueError("metadata must be a dictionary")
 
-        return Match(
+        return cls(
             id=data.get("id", Match.INVALID_ID),
             name=data["name"],
             function=data["function"],
@@ -423,8 +423,8 @@ class Analysis:
         self.user = user
         self.info = info
 
-    @staticmethod
-    def from_dict(data: dict) -> "Analysis":
+    @classmethod
+    def from_dict(cls, data: dict) -> "Analysis":
         """
         Create an Analysis instance from a dictionary.
 
@@ -448,7 +448,7 @@ class Analysis:
         if not isinstance(data.get("info"), dict):
             raise ValueError("info must be a dictionary")
 
-        return Analysis(
+        return cls(
             program=data["program"],
             user=data["user"],
             info=data["info"],
@@ -481,8 +481,8 @@ class AnalysisOptions:
         self.bob_ross = bob_ross
         self.auto_analysis = auto_analysis
 
-    @staticmethod
-    def from_dict(data: dict) -> "AnalysisOptions":
+    @classmethod
+    def from_dict(cls, data: dict) -> "AnalysisOptions":
         """
         Create an AnalysisOptions instance from a dictionary.
 
@@ -504,7 +504,7 @@ class AnalysisOptions:
         if "auto_analysis" in data and not isinstance(data["auto_analysis"], bool):
             raise ValueError("auto_analysis must be a boolean")
 
-        return AnalysisOptions(
+        return cls(
             bob_ross=data.get("bob_ross") or False,
             auto_analysis=data.get("auto_analysis") or False,
         )

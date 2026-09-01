@@ -1,560 +1,237 @@
-from argparse import ArgumentParser
-from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+"""Bob Ross: local democratic refinement of BSIM match metadata."""
+
 from collections import Counter
+from logging import Logger
+from typing import Any, List, Optional, TypeGuard
 import json
-import re
 
-import cxxfilt
-import numpy as np
+from sighthouse.frontend.model import Function
+from sighthouse.frontend.model import Match
 
 
-class NameDemangler:
-    """Handle demangling for multiple languages and compilers."""
+class BobRossMatch(Match):
 
-    @staticmethod
-    def demangle(name: str) -> Tuple[str, str]:
+    def __init__(self, id: int, name: str, function: int, metadata: dict):
+        super().__init__(id, name, function, metadata)
+        # Lazy cache for the parsed executable
+        self._parsed_executable_cached = False
+        self._parsed_executable_value: Any = None
+
+    def significance(self) -> float:
+        """Read the significance/confidence score."""
+        return self.metadata.get("significance", 0.0)
+
+    def set_significance(self, value: float) -> None:
+        """Write the significance/confidence score."""
+        self.metadata["significance"] = value
+
+    def similarity(self) -> float:
+        """Read the BSIM similarity."""
+        return self.metadata.get("similarity", 0.0)
+
+    def _parsed_executable(self) -> Any:
+        """Cache for the json metadata executable"""
+        if not self._parsed_executable_cached:
+            self._parsed_executable_cached = True
+            raw = self.metadata.get("executable")
+            try:
+                self._parsed_executable_value = (
+                    json.loads(raw) if isinstance(raw, str) else None
+                )
+            except (ValueError, TypeError):
+                self._parsed_executable_value = None
+        return self._parsed_executable_value
+
+    def library_name(self) -> Optional[str]:
+        """Extract the library name from executable or None on failure.
+
+        Except something like this ``{"metadata": [[<library>, <version>], ...]}``.
         """
-        Demangle a function name and return (demangled_name, mangling_type).
-        Returns (original_name, 'none') if not mangled.
-        """
-        # Try C++ demangling (GCC/Clang Itanium ABI)
-        if name.startswith("_Z"):
-            demangled = NameDemangler._demangle_cpp_itanium(name)
-            if demangled:
-                return demangled, "cpp_itanium"
-
-        # Try MSVC C++ mangling
-        # if name.startswith("?"):
-        #     demangled = NameDemangler._demangle_cpp_msvc(name)
-        #     if demangled:
-        #         return demangled, "cpp_msvc"
-
-        # Try Rust mangling (legacy)
-        # if name.startswith("_ZN") and "17h" in name:
-        #     demangled = NameDemangler._demangle_rust_legacy(name)
-        #     if demangled:
-        #         return demangled, "rust_legacy"
-
-        # Try Rust v0 mangling
-        # if name.startswith("_R"):
-        #     demangled = NameDemangler._demangle_rust_v0(name)
-        #     if demangled:
-        #         return demangled, "rust_v0"
-
-        # Try D language mangling
-        if name.startswith("_D"):
-            demangled = NameDemangler._demangle_d(name)
-            if demangled:
-                return demangled, "d_lang"
-
-        # Swift mangling
-        # if name.startswith("_T") or name.startswith("$s") or name.startswith("_$s"):
-        #     demangled = NameDemangler._demangle_swift(name)
-        #     if demangled:
-        #         return demangled, "swift"
-
-        return name, "none"
-
-    @staticmethod
-    def _demangle_cpp_itanium(name: str) -> Optional[str]:
-        """Demangle C++ Itanium ABI (GCC/Clang)."""
-        try:
-            return cxxfilt.demangle(name)
-        except Exception:
+        parsed = self._parsed_executable()
+        if not isinstance(parsed, dict):
             return None
-
-    # @staticmethod
-    # def _demangle_cpp_msvc(name: str) -> Optional[str]:
-    #    """Demangle MSVC C++ names."""
-    #    try:
-    #        import subprocess
-    #        # You'd need undname.exe or similar
-    #        result = subprocess.run(['undname', name], capture_output=True, text=True, timeout=1)
-    #        if result.returncode == 0:
-    #            return result.stdout.strip()
-    #    except:
-    #        pass
-    #    return None
-
-    # @staticmethod
-    # def _demangle_rust_legacy(name: str) -> Optional[str]:
-    #    """Demangle legacy Rust names."""
-    #    try:
-    #        import subprocess
-    #        result = subprocess.run(['rustfilt', name], capture_output=True, text=True, timeout=1)
-    #        if result.returncode == 0:
-    #            return result.stdout.strip()
-    #    except:
-    #        pass
-    #
-    #    # Fallback: remove hash suffix
-    #    # _ZN4core3ptr85drop_in_place$LT$std..rt..lang_start$LT$$LP$$RP$$GT$..$u7b$$u7b$closure$u7d$$u7d$$GT$17h1234567890abcdefE
-    #    match = re.match(r'(.+?)17h[0-9a-f]{16}E?$', name)
-    #    if match:
-    #        return match.group(1).replace('$LT$', '<').replace('$GT$', '>').replace('$u7b$', '{').replace('$u7d$', '}')
-    #
-    #    return None
-
-    # @staticmethod
-    # def _demangle_rust_v0(name: str) -> Optional[str]:
-    #    """Demangle Rust v0 mangling scheme."""
-    #    try:
-    #        import subprocess
-    #        result = subprocess.run(['rustfilt', name], capture_output=True, text=True, timeout=1)
-    #        if result.returncode == 0:
-    #            return result.stdout.strip()
-    #    except:
-    #        pass
-    #    return None
-
-    @staticmethod
-    def _demangle_d(name: str) -> Optional[str]:
-        """Demangle D language names."""
-        # Basic D demangling - you might want a proper library
-        if name.startswith("_D"):
-            # Simple approach: extract readable parts
-            return name[2:]  # Remove _D prefix
-        return None
-
-    # @staticmethod
-    # def _demangle_swift(name: str) -> Optional[str]:
-    #    """Demangle Swift names."""
-    #    try:
-    #        import subprocess
-    #        result = subprocess.run(['swift-demangle', name], capture_output=True, text=True, timeout=1)
-    #        if result.returncode == 0:
-    #            return result.stdout.strip()
-    #    except:
-    #        pass
-    #    return None
-
-    @staticmethod
-    def normalize_name(name: str) -> str:
-        """
-        Get a normalized version of the name for comparison.
-        Removes common variations that don't affect function identity.
-        """
-        demangled, _ = NameDemangler.demangle(name)
-
-        # Remove template parameters for comparison
-        normalized = re.sub(r"<[^>]+>", "", demangled)
-
-        # Remove namespace/class qualifiers for loose matching (optional)
-        # normalized = normalized.split('::')[-1]
-
-        # Remove parameter lists
-        normalized = re.sub(r"\([^)]*\)", "", normalized)
-
-        # Remove spaces
-        normalized = normalized.replace(" ", "")
-
-        return normalized.lower()
-
-    @staticmethod
-    def extract_function_name(name: str) -> str:
-        """
-        Extract just the function name from a fully qualified name.
-        Examples:
-            libcli::Cli::printlnNum -> printlnNum
-            HAL_PWR_DisableBkUpAccess -> HAL_PWR_DisableBkUpAccess
-            std::vector<int>::push_back -> push_back
-            namespace::Class::method() -> method
-        """
-        # First demangle
-        demangled, _ = NameDemangler.demangle(name)
-
-        # Remove parameter lists: method(int, char) -> method
-        demangled = re.sub(r"\([^)]*\).*$", "", demangled)
-
-        # Remove template parameters: method<T> -> method
-        demangled = re.sub(r"<[^>]*>", "", demangled)
-
-        # Extract last part after ::
-        if "::" in demangled:
-            parts = demangled.split("::")
-            function_name = parts[-1]
-        else:
-            function_name = demangled
-
-        # Remove any remaining whitespace
-        function_name = function_name.strip()
-
-        return function_name
+        entries = parsed.get("metadata")
+        if not isinstance(entries, list) or not entries:
+            return None
+        first = entries[0]
+        if not isinstance(first, list) or not first:
+            return None
+        return first[0]
 
 
-class Match:
-    """Represents a single match for a function."""
+class BobRossFunction(Function):
 
     def __init__(
         self,
+        id: int,
         name: str,
-        confidence: float,
-        similarity: float,
-        metadata: Optional[Dict[str, Any]] = None,
+        offset: int,
+        matches: Optional[List[BobRossMatch]] = None,
     ):
-        self.name = name
-        self.confidence = confidence
-        self.similarity = similarity
-        self.metadata = metadata or {}
-
-        # Cache demangled name
-        self._demangled_name: Optional[str] = None
-        self._normalized_name: Optional[str] = None
-        self._function_name: Optional[str] = None
-
-    def get_metadata_name(self) -> Optional[str]:
-        """Extract library name from metadata (ignoring version)."""
-        li = self.metadata.get("metadata")
-        if not isinstance(li, list) or not isinstance(li[0], list):
-            return None
-        return li[0][0]
-
-    def get_demangled_name(self) -> str:
-        """Get demangled name (cached)."""
-        if self._demangled_name is None:
-            self._demangled_name, _ = NameDemangler.demangle(self.name)
-        return self._demangled_name
-
-    def get_normalized_name(self) -> str:
-        """Get normalized name for comparison (cached)."""
-        if self._normalized_name is None:
-            self._normalized_name = NameDemangler.normalize_name(self.name)
-        return self._normalized_name
-
-    def get_function_name(self) -> str:
-        """Get just the function name without namespace/class (cached)."""
-        if self._function_name is None:
-            self._function_name = NameDemangler.extract_function_name(self.name)
-        return self._function_name
-
-    def merge_with(self, other: "Match") -> "Match":
-        """Merge this match with another, combining metadata."""
-        combined_metadata = self.metadata.copy()
-        combined_metadata.update(other.metadata.copy())
-
-        return Match(
-            name=self.name,
-            confidence=max(self.confidence, other.confidence),
-            similarity=max(self.similarity, other.similarity),
-            metadata=combined_metadata,
-        )
-
-    def copy(self) -> "Match":
-        """Create a deep copy of the match."""
-        return Match(
-            name=self.name,
-            confidence=self.confidence,
-            similarity=self.similarity,
-            metadata={k: v for k, v in self.metadata.items()},
-        )
-
-    def sort_key(self) -> Tuple:
-        """Return a deterministic sort key for this match."""
-        metadata_str = str(self.metadata) if self.metadata else ""
-        return (-self.similarity, self.name, metadata_str)
-
-    def __repr__(self):
-        return f"{self.name} {self.similarity} {self.metadata}"
-
-
-class Function:
-    """Represents a function with its matches."""
-
-    def __init__(
-        self, id: int, address: int, name: str, matches: Optional[List[Match]] = None
-    ):
-        self.id = id
-        self.address = address
-        self.name = name
-        self.matches: List[Match] = matches or []
-
-    def get_best_match(
-        self, potential_candidates: Optional[List[Match]] = None
-    ) -> Tuple[Optional[Match], float]:
-        """Get the match with highest similarity (deterministic)."""
-        if not self.matches:
-            return None, 0.0
-
-        if potential_candidates is None:
-            candidate_matches = self.matches
-        else:
-            candidate_matches = [
-                m for m in self.matches if m.get_metadata_name() in potential_candidates
-            ]
-
-        if not candidate_matches:
-            return None, 0.0
-
-        candidate_matches_sorted = sorted(candidate_matches, key=lambda m: m.sort_key())
-        best = candidate_matches_sorted[0]
-        return best, best.similarity
-
-    def sort_matches_deterministic(self):
-        """Sort matches deterministically by similarity (desc) then name (asc)."""
-        self.matches.sort(key=lambda m: m.sort_key())
-
-    def copy(self) -> "Function":
-        """Create a deep copy of the function."""
-        return Function(
-            id=self.id,
-            address=self.address,
-            name=self.name,
-            matches=[m.copy() for m in self.matches],
-        )
+        # section/details are DB-only fields
+        super().__init__(id=id, name=name, offset=offset, section=0, details={})
+        self.matches: List[BobRossMatch] = matches or []
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Function":
-        """Create a Function from a dictionary."""
-        matches = [
-            Match(
-                name=m["name"],
-                confidence=m["metadata"]["significance"],
-                similarity=m["metadata"]["similarity"],
-                metadata=json.loads(m["metadata"]["executable"]),
-            )
-            for m in data.get("matches", [])
-        ]
+    def from_analysis_dict(cls, data: dict) -> "BobRossFunction":
+        """Build from a Ghidra function dict ``{id, offset, name, matches:[...]}``."""
+        function_id = data["id"]
+        matches = []
+        for m in data.get("matches", []):
+            m["function"] = function_id
+            matches.append(BobRossMatch.from_dict(m))
+
         return cls(
-            id=data["id"],
-            address=data["offset"],
+            id=function_id,
             name=data["name"],
-            matches=matches,
+            offset=data["offset"],
+            matches=matches,  # type: ignore[arg-type]
         )
 
-    def to_dict(self) -> dict:
-        """Convert Function to dictionary."""
+    def to_analysis_dict(self) -> dict:
+        """Serialise back to the pipeline shape expected the runner."""
         return {
             "id": self.id,
-            "offset": self.address,
+            "offset": self.offset,
             "name": self.name,
-            "matches": [
-                {
-                    "id": 0,
-                    "function": self.id,
-                    "name": m.name,
-                    "metadata": {
-                        "significance": m.confidence,
-                        "similarity": m.similarity,
-                        "executable": m.metadata,
-                    },
-                }
-                for m in self.matches
-            ],
+            "matches": [m.to_dict() for m in self.matches],
         }
 
-    # def to_dict_one_match(self) -> dict:
-    #     """Convert Function to dictionary with only best match."""
-    #     return {
-    #         "address": self.address,
-    #         "name": self.name,
-    #         "matches": [
-    #             {
-    #                 "name": m.name,
-    #                 "confidence": m.confidence,
-    #                 "similarity": m.similarity,
-    #                 "metadata": m.metadata,
-    #             }
-    #             for m in ([self.matches[0]] if len(self.matches) > 0 else [])
-    #         ],
-    #     }
 
-    def __str__(self):
-        return f"{self.address} : {self.name} | {self.matches}"
+class BobRossConfig:
+    """Parameters for bobross algorithm `converge_metadata_selection`:
+
+    - 'k' is the neighbourhood radius: each function votes with the
+      k functions before and after it in address order.
+    - 'max_gap' is a distance threshold after which function are not
+      treated as neighbours anymore.
+    - 'bonus_malus' is the bonus applied to the function significance.
+    - 'influence_sim' allow to decide which neighbour matches are
+      allowed to vote based on their similarity.
+    - 'max_iterations' is the maximum number of iteration of the propagation
+      loop. It may exit early if no vote changes.
+    """
+
+    def __init__(
+        self,
+        k: int = 1,
+        max_gap: int = 1024,
+        bonus_malus: float = 0.25,
+        influence_sim: float = 0.95,
+        max_iterations: int = 1,
+    ):
+        self.k = k
+        self.max_gap = max_gap
+        self.bonus_malus = bonus_malus
+        self.influence_sim = influence_sim
+        self.max_iterations = max_iterations
+
+
+def compute_neighborhoods(
+    functions: List[BobRossFunction], k: int, max_gap: Optional[int] = None
+) -> List[List[int]]:
+    """Indices of the k nearest functions on each side, in address order
+    (assuming functions are sorted by offset). When max_gap is set, it drops
+    neighbours whose address are more than that many bytes away.
+    """
+    offsets = [f.offset for f in functions]
+    n = len(functions)
+    neighborhoods: List[List[int]] = []
+    for i in range(n):
+        window = range(max(0, i - k), min(n, i + k + 1))
+        if max_gap is None:
+            neighborhoods.append(list(window))
+        else:
+            neighborhoods.append(
+                [j for j in window if abs(offsets[j] - offsets[i]) <= max_gap]
+            )
+    return neighborhoods
+
+
+def best_library(func: BobRossFunction, influence_sim: float) -> Optional[str]:
+    """The library a function votes for: its highest-significance eligible match."""
+    eligible = [
+        m
+        for m in func.matches
+        if m.library_name() is not None and m.similarity() >= influence_sim
+    ]
+    if not eligible:
+        return None
+    best = min(eligible, key=lambda m: (-m.significance(), m.name))
+    return best.library_name()
+
+
+def choose_representant(votes: List[Optional[str]]) -> Optional[str]:
+    """Most common vote, alphabetical tie-break for determinism."""
+    if not votes:
+        return None
+
+    # Should never happens but keep mypy happy...
+    def is_str(value: str | None) -> TypeGuard[str]:
+        return value is not None
+
+    counts = Counter(filter(is_str, votes))
+    top = counts.most_common(1)[0][1]
+    return sorted(lib for lib, count in counts.items() if count == top)[0]
 
 
 def converge_metadata_selection(
-    functions: List[Function],
-    distance: int = 1000,
-    bonus_malus: float = 0.1,
-    max_iterations: int = 100,
-    convergence_threshold: float = 0.001,
-    influence_sim: float = 0.85,
-) -> List[Function]:
+    functions: List[BobRossFunction],
+    config: Optional[BobRossConfig] = None,
+    logger: Optional[Logger] = None,
+) -> List[BobRossFunction]:
+    """Refine match significance via local democratic voting.
+
+    Each round every function votes for its best library; each function then
+    adopts the plurality library of its neighbourhood and its matches for that
+    library get a significance bonus (others a malus). Repeats until the vote
+    assignment reaches a fixed point (no label changed) or max_iterations is
+    hit. Mutates matches in place and returns the functions sorted by offset.
     """
-    Iteratively refine function metadata selection using local democratic voting.
+    cfg = config or BobRossConfig()
+    functions = sorted(functions, key=lambda f: f.offset)
+    neighborhoods = compute_neighborhoods(functions, cfg.k, cfg.max_gap)
 
-    Args:
-        functions: List of Function objects (will be sorted by address)
-        distance: Address distance threshold for local voting neighborhood
-        bonus_malus: Bonus/malus factor for metadata alignment (default: 0.1)
-        max_iterations: Maximum number of iterations (default: 100)
-        convergence_threshold: Minimum change to continue iterating (default: 0.001)
-        influence_sim: Minimum similarity need to take in count during local vote
-
-    Returns:
-        List of functions with updated similarity scores (sorted by address)
-    """
-
-    # Sort functions by address for optimized neighbor search
-    functions = sorted(functions, key=lambda f: f.address)
-
-    def get_neighbors(
-        func_idx: int, functions: List[Function], distance: int
-    ) -> np.ndarray:
-        """Get indices of functions within distance threshold."""
-        current_address = functions[func_idx].address
-        neighbors = [func_idx]  # Include self
-
-        # Search left (lower addresses)
-        left_idx = func_idx - 1
-        while (
-            left_idx >= 0 and current_address - functions[left_idx].address <= distance
-        ):
-            neighbors.append(left_idx)
-            left_idx -= 1
-
-        # Search right (higher addresses)
-        right_idx = func_idx + 1
-        while (
-            right_idx < len(functions)
-            and functions[right_idx].address - current_address <= distance
-        ):
-            neighbors.append(right_idx)
-            right_idx += 1
-
-        return np.array(sorted(neighbors), dtype=np.int32)  # Sort for determinism
-
-    def vote_locally(
-        func_idx: int, functions: List[Function], distance: int
-    ) -> Optional[str]:
-        """Local democratic vote among neighboring functions."""
-        neighbor_indices = get_neighbors(func_idx, functions, distance)
-        metadata_votes = []
-        potential_candidates = set()
-
-        tmp_matches = functions[func_idx].matches
-        if tmp_matches is not None and tmp_matches != []:
-            for m in tmp_matches:
-                candidate = m.get_metadata_name()
-                if candidate:
-                    potential_candidates.add(candidate)
-
-        for neighbor_idx in neighbor_indices:
-            neighbor_func = functions[neighbor_idx]
-            best_match, best_similarity = neighbor_func.get_best_match(
-                potential_candidates
+    prev_winners: Optional[List[Optional[str]]] = None
+    iterations = 0
+    for _ in range(cfg.max_iterations):
+        # Array of potential candidates elected as best match by the function
+        best_lib = [best_library(f, cfg.influence_sim) for f in functions]
+        # Select the most common library among the neighbourhood as representant
+        winners: List[Optional[str]] = [
+            choose_representant(
+                [best_lib[j] for j in neighborhoods[i] if best_lib[j] is not None]
             )
-            if best_match and best_similarity >= influence_sim:
-                metadata_name = best_match.get_metadata_name()
-                if metadata_name:
-                    metadata_votes.append(metadata_name)
+            for i in range(len(functions))
+        ]
 
-        if not metadata_votes:
-            return None
+        # Convergence reach, we can stop
+        if winners == prev_winners:
+            break
+        prev_winners = winners
+        iterations += 1
 
-        # Count votes and return winner (deterministic in case of tie)
-        counter = Counter(metadata_votes)
-        # Sort by count (desc) then alphabetically (asc) for determinism
-        most_common_list = counter.most_common()
-        max_count = most_common_list[0][1]
+        for func, winner in zip(functions, winners):
+            if winner is None:
+                continue
+            for match in func.matches:
+                library = match.library_name()
+                if library is None:
+                    continue
+                score = match.significance()
+                if library == winner:
+                    # significance is unbounded [0, +inf]
+                    match.set_significance(score * (1 + cfg.bonus_malus))
+                else:
+                    match.set_significance(max(0.0, score * (1 - cfg.bonus_malus)))
 
-        # Get all metadata with max count, then sort alphabetically
-        winners = [meta for meta, count in most_common_list if count == max_count]
-        # print(counter, winners)
-        return sorted(winners)[0]  # Alphabetically first winner
-
-    def compute_all_votes(functions: List[Function], distance: int) -> np.ndarray:
-        """Compute local votes for all functions simultaneously."""
-        votes = []
-        for idx in range(len(functions)):
-            chosen_metadata = vote_locally(idx, functions, distance)
-            votes.append(chosen_metadata)
-        return np.array(votes, dtype=object)
-
-    def apply_bonus_malus_all(
-        functions: List[Function],
-        chosen_metadata_list: np.ndarray,
-        bonus_malus: float,
-    ) -> List[Function]:
-        """Apply bonus/malus to all functions based on their local votes."""
-        updated_functions = []
-
-        for func_idx, func in enumerate(functions):
-            chosen_metadata = chosen_metadata_list[func_idx]
-            updated_func = func.copy()
-
-            for match in updated_func.matches:
-                metadata_name = match.get_metadata_name()
-
-                # Apply bonus if metadata matches chosen one, malus otherwise
-                if chosen_metadata and metadata_name == chosen_metadata:
-                    match.similarity = min(1.0, match.similarity * (1 + bonus_malus))
-                elif chosen_metadata and metadata_name is not None:
-                    match.similarity = max(0.0, match.similarity * (1 - bonus_malus))
-
-            updated_functions.append(updated_func)
-
-        return updated_functions
-
-    def calculate_total_change(
-        old_functions: List[Function], new_functions: List[Function]
-    ) -> float:
-        """Calculate total change in similarity scores using NumPy."""
-        old_sims = np.array([func.get_best_match()[1] for func in old_functions])
-        new_sims = np.array([func.get_best_match()[1] for func in new_functions])
-        return np.sum(np.abs(new_sims - old_sims))
-
-    # Main convergence loop
-    current_functions = [func.copy() for func in functions]
-
-    for iteration in range(max_iterations):
-        # Compute all local votes simultaneously
-        chosen_metadata_list = compute_all_votes(current_functions, distance)
-
-        # Sort matches deterministically
-        for function in current_functions:
-            function.sort_matches_deterministic()
-
-        # Apply bonus/malus based on local votes
-        updated_functions = apply_bonus_malus_all(
-            current_functions, chosen_metadata_list, bonus_malus
+    if logger is not None:
+        decided = Counter(w for w in (prev_winners or []) if w is not None)
+        logger.info(
+            "bobross: %d function(s), %d iteration(s), %d with a chosen library",
+            len(functions),
+            iterations,
+            sum(decided.values()),
         )
 
-        # Check convergence
-        total_change = calculate_total_change(current_functions, updated_functions)
-
-        # Print iteration details (optional)
-        # metadata_summary = Counter([m for m in chosen_metadata_list if m is not None])
-        # print(f"Iteration {iteration + 1}: Total change = {total_change:.6f}")
-
-        if total_change < convergence_threshold:
-            current_functions = updated_functions
-            break
-
-        current_functions = updated_functions
-
-    return current_functions
-
-
-# def main():
-#     parser = ArgumentParser()
-#     parser.add_argument("output_path")
-#
-#     args = parser.parse_args()
-#
-#     # Analysis succeed, load program
-#     with open(args.output_path, "r", encoding="utf-8") as fp:
-#         program = json.load(fp)
-#
-#     # Delete all functions from all sections
-#     for section in program["sections"]:
-#         functions: List[Function] = [
-#             Function.from_dict(f) for f in section["functions"]
-#         ]
-#         for function in functions:
-#             function.sort_matches_deterministic()
-#
-#         result = converge_metadata_selection(
-#             functions,
-#             distance=64,
-#             bonus_malus=0.0935,
-#             max_iterations=1,
-#             influence_sim=0.85,
-#         )
-#         section["functions"] = [f.to_dict() for f in result]
-#         print(section)
-#
-#
-# if __name__ == "__main__":
-#     main()
+    return functions
