@@ -544,6 +544,57 @@ class SightHouseClient(object):
 
         return False
 
+    def set_language(self, language: str) -> bool:
+        """Set (or override) the program's language on the server.
+
+        Args:
+            language (str): The Ghidra language id to set.
+
+        Returns:
+            bool: Whether the operation has succeeded (True) or not (False).
+        """
+        err_prefix = "Set language failure"
+        route = self.get_api_url() + "programs/{}/language".format(self._programid)
+        url = self._url._replace(path=route).geturl()
+        try:
+            resp = self._session.put(
+                url, json={"language": language}, verify=self._verify_host
+            )
+            resp.raise_for_status()
+        except requests.exceptions.HTTPError:
+            self.check_web_error(resp, err_prefix)
+        except requests.exceptions.RequestException as e:
+            self._logger.error(f"{err_prefix}: {e}")
+        else:
+            return True
+
+        return False
+
+    def autoload(self) -> bool:
+        """Run Ghidra's native importer to detect the program's language and
+        memory layout (Auto mode).
+
+        Detection runs asynchronously, like an analysis: poll is_analyzing() for
+        completion, then read the results with list_sections() / get_program().
+
+        Returns:
+            bool: Whether the request was accepted or not.
+        """
+        err_prefix = "Autoload failure"
+        route = self.get_api_url() + "programs/{}/autoload".format(self._programid)
+        url = self._url._replace(path=route).geturl()
+        try:
+            resp = self._session.post(url, json={}, verify=self._verify_host)
+            resp.raise_for_status()
+        except requests.exceptions.HTTPError:
+            self.check_web_error(resp, err_prefix)
+        except requests.exceptions.RequestException as e:
+            self._logger.error(f"{err_prefix}: {e}")
+        else:
+            return True
+
+        return False
+
     def is_analyzing(self) -> bool:
         """Check if a program is analyzing or not
 

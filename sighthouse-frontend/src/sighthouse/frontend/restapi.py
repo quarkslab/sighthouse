@@ -9,7 +9,7 @@ import time
 import json
 
 from celery import Celery
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, send_from_directory
 from flask_login import (
     login_user,
     login_required,
@@ -73,7 +73,7 @@ class FrontendRestAPI(ServerThread):
     ):
         self.__database: FrontendDatabase = database
         self.__logger = logger
-        self.__app = Flask(__name__)
+        self.__app = Flask(__name__, static_url_path="", static_folder="web")
         self.__app.secret_key = token_hex(32)
         self.__register_routes()
         self.__register_error_handlers()
@@ -81,9 +81,13 @@ class FrontendRestAPI(ServerThread):
         self.__login_manager.init_app(self.__app)
         self.__register_user_stuff()
         self.__ghidra_dir = ghidra_dir
+        self.__languages_cache: Optional[List[str]] = (
+            None  # lazily-filled Ghidra language list
+        )
         self.__fidbs = fidbs or []
         self.__bsims = bsims or []
         self.__celery_app = Celery("", broker=celery_url, backend=celery_url)  # Useless
+        self.__static_dir = Path(self.__app.root_path) / "web"
 
         super().__init__(self.__app, host, port)
 
@@ -107,12 +111,20 @@ class FrontendRestAPI(ServerThread):
                 tuple[Response, int]: A tuple containing the HTTP error code and
                                    the data to send to the remote peer
             """
-            self.__logger.error("".join(format_exception(e)))
             if isinstance(e, HTTPException):
+                # Avoid logging 401/404 errors, for example when the favicon is not found
+                self.__logger.debug("".join(format_exception(e)))
                 return jsonify({"error": e.description}), e.code
+            # Unexpected server error, keep the full traceback for debugging
+            self.__logger.error("".join(format_exception(e)))
             return jsonify({"error": str(e)}), 500
 
     def __register_routes(self) -> None:
+
+        @self.__app.route("/", methods=["GET"])
+        def index():
+            """Serve static files"""
+            return send_from_directory(self.__static_dir, "index.html")
 
         @self.__app.route("/api/v1/ping", methods=["GET"])
         def ping() -> Tuple[Response, int]:
@@ -202,7 +214,7 @@ class FrontendRestAPI(ServerThread):
                     }
                     ```
             """
-            return jsonify({"languages": get_ghidra_languages(self.__ghidra_dir)}), 200
+            return jsonify({"languages": self.__languages()}), 200
 
         @self.__app.route("/api/v1/uploads", methods=["POST"])
         @login_required
@@ -386,11 +398,9 @@ class FrontendRestAPI(ServerThread):
                 if not file:
                     return jsonify({"error": "File is invalid"}), 400
 
-                # Validate language
+                # Validate language from Ghidra list and 'auto' reserved keyword
                 language = program_data.get("language")
-                if not isinstance(
-                    language, str
-                ) or language not in get_ghidra_languages(self.__ghidra_dir):
+                if not self.__is_valid_language(language, allow_auto=True):
                     return jsonify({"error": "Language is invalid"}), 400
 
                 # Attach user ID
@@ -536,7 +546,7 @@ class FrontendRestAPI(ServerThread):
             """
 
             # Step 1: Assert program is not being analyzed
-            if self.is_program_under_analysis(program_id):
+            if self.__is_program_under_analysis(program_id):
                 return (
                     jsonify(
                         {"error": "Cannot modify program while it is being analyzed"}
@@ -620,31 +630,39 @@ class FrontendRestAPI(ServerThread):
                     }
                     ```
             """
-            # TODO: Add option bobross
             program = self.__database.get_program(
                 program_id, user_id=get_current_user().id
             )
             if program is None:
                 return jsonify({"error": "Program not found"}), 404
 
+            # Unsure that language has been set
+            if not self.__is_valid_language(program.language):
+                return (
+                    jsonify(
+                        {
+                            "error": "Program language is not set."
+                            " Run autoload or set a language first."
+                        }
+                    ),
+                    400,
+                )
+
+            # Unsure the program has at least one section
+            if len(self.__database.list_program_sections(program.id)) == 0:
+                return (
+                    jsonify({"error": "Program has no memory layout."}),
+                    400,
+                )
+
             analysis = self.__database.get_analysis(program_id, get_current_user().id)
             if not analysis:
                 analysis = Analysis(program=program_id, user=program.user, info={})
-                self.__database.add_analysis(analysis)
-            elif analysis.info["status"] != "finished":
+            elif analysis.info.get("status") != "finished":
                 return jsonify({"error": "Analyzed not finished"}), 500
 
-            analysis.info.update({"status": "pending", "enqueue": time.time()})
-
-            # File should always exists
-            file = self.__database.get_file_user(program.file, user_id=program.user)
-            if file is None:
-                return (
-                    jsonify({"error": "Fail to get file associated with program"}),
-                    500,
-                )
-
-            sharefile = self.__database.get_sharefile(file)
+            # Resolve the binary before marking the analysis pending
+            sharefile = self.__resolve_sharefile(program)
             if sharefile is None:
                 return (
                     jsonify({"error": "Fail to get file associated with program"}),
@@ -654,7 +672,7 @@ class FrontendRestAPI(ServerThread):
             bsims = [parse_uri(e) for e in self.__bsims]
             fidbs = [parse_uri(e) for e in self.__fidbs]
             config = {
-                "program": self._jsonify_program(program),
+                "program": self.__jsonify_program(program),
                 "bsim": {
                     "enabled": True,
                     "databases": [
@@ -692,39 +710,125 @@ class FrontendRestAPI(ServerThread):
                 self.__database.get_upload_dir(program.user)
                 + f"{program.id}_config.json"
             )
-            if self.__database.repo.push_file(
+            if not self.__database.repo.push_file(
                 upload_file_config, json.dumps(config).encode("utf-8")
             ):
-                # Validate analysis options (or use default)
-                options = AnalysisOptions.from_dict(request.get_json() or {})
-
-                self.__celery_app.send_task(
-                    "frontendanalyzer.do_work",
-                    queue="frontendanalyzer",
-                    kwargs={
-                        "job_data": {
-                            "binary": str(sharefile),
-                            "config": str(
-                                self.__database.repo.get_sharefile(upload_file_config)
-                            ),
-                            "options": options.to_dict(),
-                        }
-                    },
-                )
-                # TODO: Add Celery option for bobross
                 return (
-                    jsonify({"message": "We are currently analyzing your program"}),
-                    200,
+                    jsonify(
+                        {
+                            "error": f"We cannot upload the configuration file for {program.name}"
+                        }
+                    ),
+                    500,
                 )
 
-            return (
-                jsonify(
-                    {
-                        "error": f"We cannot upload the configuration file for {program.name}"
+            # Now mark pending and enqueue (Add an already exisiting analysis is safe)
+            self.__database.add_analysis(analysis)
+            analysis.info = {"status": "pending", "enqueue": time.time()}
+            options = AnalysisOptions.from_dict(request.get_json() or {})
+            self.__celery_app.send_task(
+                "frontendanalyzer.do_search_signatures",
+                queue="frontendanalyzer",
+                kwargs={
+                    "job_data": {
+                        "binary": str(sharefile),
+                        "config": str(
+                            self.__database.repo.get_sharefile(upload_file_config)
+                        ),
+                        "options": options.to_dict(),
                     }
-                ),
-                500,
+                },
             )
+            return (
+                jsonify({"message": "We are currently analyzing your program"}),
+                200,
+            )
+
+        @self.__app.route(
+            "/api/v1/programs/<int:program_id>/autoload", methods=["POST"]
+        )
+        @login_required
+        def autoload_program(program_id) -> Tuple[Response, int]:
+            """
+            Endpoint for the Auto-mode "detect" pass: run Ghidra's native importer
+            to detect the program's language and memory layout. The worker persists
+            the detected language + sections via localapi; the user then reviews and
+            edits them before running analysis.
+
+            Returns:
+                200: Autoload is successfully initiated
+                404: The specified program does not exist
+                500: Internal server error
+            """
+            program = self.__database.get_program(
+                program_id, user_id=get_current_user().id
+            )
+            if program is None:
+                return jsonify({"error": "Program not found"}), 404
+
+            # Resolve the binary before marking the analysis pending
+            analysis = self.__database.get_analysis(program_id, get_current_user().id)
+            if not analysis:
+                analysis = Analysis(program=program_id, user=program.user, info={})
+            elif analysis.info.get("status") != "finished":
+                return jsonify({"error": "Analyzed not finished"}), 500
+
+            sharefile = self.__resolve_sharefile(program)
+            if sharefile is None:
+                return (
+                    jsonify({"error": "Fail to get file associated with program"}),
+                    500,
+                )
+
+            # Now mark pending and enqueue (Add an already exisiting analysis is safe)
+            self.__database.add_analysis(analysis)
+            analysis.info = {"status": "pending", "enqueue": time.time()}
+            self.__celery_app.send_task(
+                "frontendanalyzer.do_autoload",
+                queue="frontendanalyzer",
+                kwargs={
+                    "job_data": {
+                        "program": program.id,
+                        "binary": str(sharefile),
+                    }
+                },
+            )
+            return (
+                jsonify({"message": "Autoload is running"}),
+                200,
+            )
+
+        @self.__app.route("/api/v1/programs/<int:program_id>/language", methods=["PUT"])
+        @login_required
+        def set_program_language(program_id) -> Tuple[Response, int]:
+            """
+            Endpoint for setting or overriding a program's language. Recovery path
+            for when autoload didn't run / failed / can't detect the format, and a
+            way to override a detected language.
+
+            Body:
+                {"language": str} - validated against the Ghidra language list.
+
+            Returns:
+                200: Language updated
+                400: Invalid language
+                404: Program not found
+            """
+            program = self.__database.get_program(
+                program_id, user_id=get_current_user().id
+            )
+            if program is None:
+                return jsonify({"error": "Program not found"}), 404
+
+            data = request.get_json()
+            language = data.get("language") if isinstance(data, dict) else None
+            if not self.__is_valid_language(language):
+                return jsonify({"error": "Language is invalid"}), 400
+
+            # Language is valid at this point
+            program.language = language  # type: ignore[assignment]
+            self.__database.update_program(program, user_id=get_current_user().id)
+            return jsonify({"success": "Language updated"}), 200
 
         @self.__app.route(
             "/api/v1/programs/<int:program_id>/sections", methods=["POST"]
@@ -767,7 +871,7 @@ class FrontendRestAPI(ServerThread):
                     ```
             """
             # Step 1: Assert program is not being analyzed
-            if self.is_program_under_analysis(program_id):
+            if self.__is_program_under_analysis(program_id):
                 return (
                     jsonify(
                         {"error": "Cannot modify program while it is being analyzed"}
@@ -957,7 +1061,7 @@ class FrontendRestAPI(ServerThread):
 
             """
             # Step 1: Assert program is not being analyzed
-            if self.is_program_under_analysis(program_id):
+            if self.__is_program_under_analysis(program_id):
                 return (
                     jsonify(
                         {"error": "Cannot modify program while it is being analyzed"}
@@ -1012,7 +1116,7 @@ class FrontendRestAPI(ServerThread):
                     ```
             """
             # Step 1: Assert program is not being analyzed
-            if self.is_program_under_analysis(program_id):
+            if self.__is_program_under_analysis(program_id):
                 return (
                     jsonify(
                         {"error": "Cannot modify program while it is being analyzed"}
@@ -1071,7 +1175,7 @@ class FrontendRestAPI(ServerThread):
                     ```
             """
             # Step 1: Assert program is not being analyzed
-            if self.is_program_under_analysis(program_id):
+            if self.__is_program_under_analysis(program_id):
                 return (
                     jsonify(
                         {"error": "Cannot modify program while it is being analyzed"}
@@ -1258,7 +1362,7 @@ class FrontendRestAPI(ServerThread):
                     ```
             """
             # Step 1: Assert program is not being analyzed
-            if self.is_program_under_analysis(program_id):
+            if self.__is_program_under_analysis(program_id):
                 return (
                     jsonify(
                         {"error": "Cannot modify program while it is being analyzed"}
@@ -1335,7 +1439,31 @@ class FrontendRestAPI(ServerThread):
             matches = self.__database.list_function_matches(function.id)
             return jsonify({"matches": [m.to_dict() for m in matches]}), 200
 
-    def is_program_under_analysis(self, program_id: int) -> bool:
+    def __languages(self) -> list:
+        """The Ghidra language list, scanned once and cached"""
+        if self.__languages_cache is None:
+            self.__languages_cache = get_ghidra_languages(self.__ghidra_dir)
+        return self.__languages_cache
+
+    def __is_valid_language(
+        self, language: Optional[str], allow_auto: bool = False
+    ) -> bool:
+        """Whether `language` is a real Ghidra language (or the "auto" sentinel
+        when `allow_auto`)."""
+        if not isinstance(language, str):
+            return False
+        if allow_auto and language == "auto":
+            return True
+        return language in self.__languages()
+
+    def __resolve_sharefile(self, program: Program):
+        """Resolve a program's binary sharefile, or None if unavailable."""
+        file = self.__database.get_file_user(program.file, user_id=program.user)
+        if file is None:
+            return None
+        return self.__database.get_sharefile(file)
+
+    def __is_program_under_analysis(self, program_id: int) -> bool:
         """Return whether the given program is under analysis or not
 
         Args:
@@ -1350,7 +1478,7 @@ class FrontendRestAPI(ServerThread):
 
         return True
 
-    def _jsonify_program(self, program: Program) -> dict:
+    def __jsonify_program(self, program: Program) -> dict:
         # Generate all the program data up to function level into a json file that will
         # be given to the ghidra analyzer
         sections_data = []

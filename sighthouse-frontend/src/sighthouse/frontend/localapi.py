@@ -6,7 +6,7 @@ from werkzeug.exceptions import HTTPException
 
 from sighthouse.core.utils.api import ServerThread
 from .database import FrontendDatabase
-from .model import Function, Match, Analysis
+from .model import Function, Match, Analysis, Section
 
 
 class LocalRestAPI(ServerThread):
@@ -91,6 +91,84 @@ class LocalRestAPI(ServerThread):
                 except Exception as e:
                     print(e)
             return jsonify({"success": "Analysis status updated"}), 200
+
+        @self.__app.route(
+            "/api/v1/programs/<int:program_id>/sections", methods=["POST"]
+        )
+        def create_sections(program_id: int) -> Tuple[Response, int]:
+            """Create sections discovered by the autoload pass.
+
+            Args:
+                program_id (int): program id
+
+            Returns:
+                tuple[Response, int]: A tuple containing the HTTP response code and the data
+                to send to the remote peer
+            """
+            program = self.__database.get_program(program_id)
+            if program is None:
+                return jsonify({"error": "Fail to find program"}), 404
+
+            data = request.get_json()
+            if not isinstance(data, dict) or not isinstance(data.get("sections"), list):
+                return (
+                    jsonify({"error": "Bad parameters, missing 'sections' list"}),
+                    400,
+                )
+
+            # First parse all the input data
+            sections_list = []
+            for section_data in data["sections"]:
+                if not isinstance(section_data, dict):
+                    return jsonify({"error": "Invalid section data found"}), 400
+
+                # Set program id
+                section_data["program"] = program.id
+                try:
+                    sections_list.append(Section.from_dict(section_data))
+                except ValueError as e:
+                    return jsonify({"error": str(e)}), 400
+
+            # Then add elements to the database, skipping names that already exist
+            # so a re-run of autoload is idempotent
+            existing = {
+                s.name: s for s in self.__database.list_program_sections(program.id)
+            }
+            results = []
+            for section in sections_list:
+                if section.name in existing:
+                    results.append(existing[section.name])
+                    continue
+                db_section = self.__database.add_section(section)
+                if db_section is None:
+                    return jsonify({"error": "Failed to add section"}), 500
+                results.append(db_section)
+
+            return jsonify({"sections": [s.to_dict() for s in results]}), 201
+
+        @self.__app.route("/api/v1/programs/<int:program_id>/language", methods=["PUT"])
+        def update_language(program_id: int) -> Tuple[Response, int]:
+            """Set a program's language.
+
+            Args:
+                program_id (int): program id
+
+            Returns:
+                tuple[Response, int]: A tuple containing the HTTP response code and the data
+                to send to the remote peer
+            """
+            program = self.__database.get_program(program_id)
+            if program is None:
+                return jsonify({"error": "Fail to find program"}), 404
+
+            data = request.get_json()
+            language = data.get("language") if isinstance(data, dict) else None
+            if not isinstance(language, str):
+                return jsonify({"error": "Bad parameters, missing 'language'"}), 400
+
+            program.language = language
+            self.__database.update_program(program)
+            return jsonify({"success": "Language updated"}), 200
 
         @self.__app.route(
             "/api/v1/programs/<int:program_id>/sections/<int:section_id>/functions",

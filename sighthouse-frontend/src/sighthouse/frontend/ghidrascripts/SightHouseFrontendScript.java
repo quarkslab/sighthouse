@@ -607,6 +607,7 @@ public class SightHouseFrontendScript extends GhidraScript {
 
   // Analysis variables
   private static final String DECOMPILER_SWITCH_ANALYZER = "Decompiler Switch Analysis";
+  private static final String AGGRESSIVE_INSTRUCTION_FINDER = "Aggressive Instruction Finder";
  
   private Program importWithCustomLoader(File file, SightHouseProgram sg, Language language, CompilerSpec compilerSpec) throws Exception {
 
@@ -678,6 +679,15 @@ public class SightHouseFrontendScript extends GhidraScript {
       setAnalysisOption(program, DECOMPILER_SWITCH_ANALYZER, "false");
     }
 
+    // The custom loader maps raw bytes with no entry point and no symbols. When
+    // the SRE client supplied functions they already seed disassembly, but in
+    // Auto mode (web / `analyze` CLI) there are none, so the default flow-based
+    // analyzers have nowhere to start and identify nothing. Detect that case and
+    // let Ghidra bootstrap code discovery on its own.
+    boolean bootstrap =
+        analysisOptions.doAutoAnalysis()
+            && program.getFunctionManager().getFunctionCount() == 0;
+
     if (!analysisOptions.doAutoAnalysis()) {
       // Disable almost all analysis if auto_analysis
       for (Map.Entry<String, String> entry : options.entrySet()) {
@@ -686,11 +696,20 @@ public class SightHouseFrontendScript extends GhidraScript {
           setAnalysisOption(program, entry.getKey(), "false");
         }
       }
+    } else if (bootstrap && options.containsKey(AGGRESSIVE_INSTRUCTION_FINDER)) {
+      // Off by default: sweeps undefined executable bytes for valid code, which
+      // is how functions get found when there is no entry point to disassemble.
+      setAnalysisOption(program, AGGRESSIVE_INSTRUCTION_FINDER, "true");
     }
 
     try {
       // Tell analyzers that all the addresses in the set should be re-analyzed when analysis runs.
       mgr.reAnalyzeAll(null);
+      if (bootstrap) {
+        // Give the analyzers a starting point by disassembling the executable
+        // blocks ourselves; the aggressive finder then sweeps whatever is left.
+        seedDisassembly(program);
+      }
       println("ANALYZING all memory and code: " + program.getName());
       mgr.startAnalysis(TaskMonitor.DUMMY); // kick start
 
@@ -701,6 +720,29 @@ public class SightHouseFrontendScript extends GhidraScript {
       program.endTransaction(txId, true);
     }
     return true;
+  }
+
+  // Kick-start disassembly at the beginning of every executable, initialized
+  // block. Without an entry point the flow-based analyzers have nowhere to
+  // start; seeding each block start (following flow, restricted to executable
+  // memory) reaches everything reachable from there, and the aggressive
+  // instruction finder picks up the rest.
+  private void seedDisassembly(Program program) {
+    AddressSet exec = new AddressSet();
+    for (MemoryBlock block : program.getMemory().getBlocks()) {
+      if (block.isExecute() && block.isInitialized()) {
+        exec.addRange(block.getStart(), block.getEnd());
+      }
+    }
+    if (exec.isEmpty()) {
+      println("No executable memory to disassemble");
+      return;
+    }
+    for (MemoryBlock block : program.getMemory().getBlocks()) {
+      if (block.isExecute() && block.isInitialized()) {
+        new DisassembleCommand(block.getStart(), exec, true).applyTo(program, monitor);
+      }
+    }
   }
 
   private List<Function> filterFunctionOnInstructionCount(Program program, int min, int max) {
@@ -740,6 +782,15 @@ public class SightHouseFrontendScript extends GhidraScript {
     // First filter onces the functions to search for
     List<Function> funcs = filterFunctionOnInstructionCount(program, bsim.getMinNumberOfInstructions(), bsim.getMaxNumberOfInstructions());
     println("Start searching for BSIM among " + funcs.size() + " functions");
+    // Nothing to signature: BSim generates no vectors, so the query's
+    // DescriptionManager would carry no settings and the server would reject it
+    // with "Query signature data has no setting information". Bail out cleanly
+    // (0 matches) instead of crashing. This happens when auto-analysis identifies
+    // no functions, or when they're all removed by the instruction-count filter.
+    if (funcs.isEmpty()) {
+      println("No functions to search for, skipping BSIM search");
+      return;
+    }
     for (DatabaseConfiguration database: bsim.getDatabases()) {
       // Derive BSIM url and connect to the database
       ClientUtil.setClientAuthenticator(database.getAuthenticator());

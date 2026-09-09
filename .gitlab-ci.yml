@@ -46,7 +46,7 @@ pages:
   publish: doc/public
   rules:
     - if: '$CI_COMMIT_BRANCH == "testing"'
-  
+ 
 docker_ghidra_generation:  
   stage: docker-ghidra
   image: docker:latest

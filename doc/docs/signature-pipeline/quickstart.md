@@ -1,6 +1,8 @@
 # Quickstart 
 
-Assuming you have followed the installation process described [here](installation.md), you should be able to 
+!!! tip "Not installed yet?"
+    Assuming you have followed the installation process described [here](installation.md), you should be able to 
+
 run SightHouse without any arguments to get the help: 
 
 ```bash

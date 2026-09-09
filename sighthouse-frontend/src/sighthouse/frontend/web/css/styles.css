@@ -1,0 +1,197 @@
+/*
+  +-----------------------------------------------------------------------+
+  | DISCLAIMER: This file was generated with the assistance of a          |
+  | Large Language Model (LLM) because I have poor web UI skills. The     |
+  | rest of the code was written by humans. If this is a problem for you, |
+  | feel free to use one of the other clients, or you are more than       |
+  | welcome to propose a PR :)                                            |
+  +-----------------------------------------------------------------------+ 
+*/
+
+/* =============================================================================
+   SightHouse frontend - Bootstrap theme + app layout
+   ========================================================================== */
+
+/* ---- Palette: SightHouse colors -> Bootstrap theme variables --------------- */
+[data-bs-theme="dark"] {
+  --bs-body-bg: #0d1117;
+  --bs-body-bg-rgb: 13, 17, 23;
+  --bs-body-color: #e6edf3;
+  --bs-body-color-rgb: 230, 237, 243;
+  --bs-emphasis-color: #ffffff;
+
+  --bs-secondary-color: #9aa7b8;
+  --bs-secondary-color-rgb: 154, 167, 184;
+  --bs-secondary: #9aa7b8;
+  --bs-secondary-rgb: 154, 167, 184;
+  --bs-secondary-bg: #161b22;
+  --bs-tertiary-color: #6b7789;
+  --bs-tertiary-bg: #161b22;
+
+  --bs-border-color: #2b3648;
+
+  --bs-primary: #2f81f7;
+  --bs-primary-rgb: 47, 129, 247;
+  --bs-link-color: #2f81f7;
+  --bs-link-color-rgb: 47, 129, 247;
+  --bs-link-hover-color: #4c93f8;
+  --bs-link-hover-color-rgb: 76, 147, 248;
+
+  --bs-success: #2ea043;
+  --bs-success-rgb: 46, 160, 67;
+  --bs-warning: #d29922;
+  --bs-warning-rgb: 210, 153, 34;
+  --bs-danger: #f85149;
+  --bs-danger-rgb: 248, 81, 73;
+
+  --bs-code-color: #9aa7b8;
+}
+
+/* Cards: elevated surface, lighter header cap, app border. */
+.card {
+  --bs-card-bg: #161b22;
+  --bs-card-cap-bg: #1b2230;
+  --bs-card-border-color: #2b3648;
+  --bs-card-color: #e6edf3;
+}
+
+/* Primary button = accent (btn-primary vars are compiled literals in BS). */
+.btn-primary {
+  --bs-btn-bg: #2f81f7;
+  --bs-btn-border-color: #2f81f7;
+  --bs-btn-hover-bg: #4c93f8;
+  --bs-btn-hover-border-color: #4c93f8;
+  --bs-btn-active-bg: #4c93f8;
+  --bs-btn-active-border-color: #4c93f8;
+  --bs-btn-disabled-bg: #2f81f7;
+  --bs-btn-disabled-border-color: #2f81f7;
+  --bs-btn-color: #fff;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-active-color: #fff;
+}
+
+/* Ghost/outline button = app's muted outline. */
+.btn-outline-secondary {
+  --bs-btn-color: #9aa7b8;
+  --bs-btn-border-color: #3a475c;
+  --bs-btn-hover-color: #e6edf3;
+  --bs-btn-hover-bg: #263043;
+  --bs-btn-hover-border-color: #3a475c;
+  --bs-btn-active-color: #e6edf3;
+  --bs-btn-active-bg: #263043;
+  --bs-btn-active-border-color: #3a475c;
+  --bs-btn-disabled-color: #9aa7b8;
+  --bs-btn-disabled-border-color: #3a475c;
+}
+
+/* Neutral badges: --bs-secondary-rgb stays light (for muted text), so set the
+   badge background explicitly. */
+.text-bg-secondary {
+  color: #e6edf3 !important;
+  background-color: #2b3648 !important;
+}
+
+/* Focus rings + checked controls = accent (compiled literals in BS). */
+.form-control:focus,
+.form-select:focus {
+  border-color: #2f81f7;
+  box-shadow: 0 0 0 0.25rem rgba(47, 129, 247, 0.25);
+}
+.form-check-input:checked {
+  background-color: #2f81f7;
+  border-color: #2f81f7;
+}
+.form-check-input:focus {
+  border-color: #2f81f7;
+  box-shadow: 0 0 0 0.25rem rgba(47, 129, 247, 0.25);
+}
+
+/* Sidebar selected item = accent. */
+.list-group {
+  --bs-list-group-active-bg: #2f81f7;
+  --bs-list-group-active-border-color: #2f81f7;
+}
+
+/* ---- App layout ----------------------------------------------------------- */
+html,
+body {
+  height: 100%;
+}
+
+/* App shell: fixed navbar, then a sidebar/main split that fills the viewport. */
+#app-view {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.sidebar {
+  width: 300px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+}
+/* Program list scrolls; the "report an issue" footer stays pinned below it. */
+#program-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+#main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+/* ---- Memory-layout (sections) editor table -------------------------------- */
+.sections-table th {
+  white-space: nowrap;
+  font-weight: 500;
+}
+.sections-table td {
+  padding: 0.25rem;
+  vertical-align: middle;
+}
+.sections-table .col-perm,
+.sections-table .col-actions {
+  width: 44px;
+  text-align: center;
+}
+/* Bootstrap's modal-dialog-scrollable expects .modal-body to be a direct flex
+   child of .modal-content, but our <form> wraps the body + footer. Re-establish
+   the flex column on the form so the body scrolls and the footer stays pinned
+   instead of the modal overflowing off the bottom of the page. */
+.modal-dialog-scrollable > .modal-content > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---- Matches table: fixed columns ----------------------------------------- */
+/* Fix the column widths so long function/match names wrap inside their own
+   column instead of stretching the whole table and pushing other columns out. */
+.matches-table {
+  table-layout: fixed;
+}
+.matches-table th,
+.matches-table td {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* Let the fixed-width headers wrap rather than clip (overrides .sortable's nowrap). */
+.matches-table th.sortable {
+  white-space: normal;
+}
+
+/* ---- Sortable match-table headers ----------------------------------------- */
+.table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}

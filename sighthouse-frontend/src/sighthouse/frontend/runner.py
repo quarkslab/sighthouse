@@ -151,6 +151,44 @@ class LocalApiClient:
                 f"Failed to update status. Response Code: {response.status_code}"
             )
 
+    def create_sections(self, program_id: int, sections: List[Dict[str, Any]]) -> None:
+        """Create sections derived by the autoload (detect) pass.
+
+        Args:
+            program_id (int): The ID of the program.
+            sections (List[Dict[str, Any]]): The sections to create.
+        """
+        url = f"{self.base_url}/programs/{program_id}/sections"
+        response = requests.post(
+            url,
+            headers={"Content-Type": "application/json"},
+            json={"sections": sections},  # type: ignore[dict-item]
+        )
+        self.logger.info(f"Create sections Response Code :: {response.status_code}")
+        if response.status_code != 201:
+            self.logger.warning(
+                f"Failed to create sections. Response Code: {response.status_code}"
+            )
+
+    def set_language(self, program_id: int, language: str) -> None:
+        """Set a program's language (detected by the autoload pass).
+
+        Args:
+            program_id (int): The ID of the program.
+            language (str): The detected Ghidra language id.
+        """
+        url = f"{self.base_url}/programs/{program_id}/language"
+        response = requests.put(
+            url,
+            headers={"Content-Type": "application/json"},
+            json={"language": language},
+        )
+        self.logger.info(f"Set language Response Code :: {response.status_code}")
+        if response.status_code != 200:
+            self.logger.warning(
+                f"Failed to set language. Response Code: {response.status_code}"
+            )
+
 
 class Worker:
     """Simple worker that process analysis request by using Ghidra analyzer"""
@@ -168,7 +206,9 @@ class Worker:
             concurrent_task (int): Number of concurrent tasks to process.
         """
 
-        @self.celery_app.task(name="frontendanalyzer.do_work", queue="frontendanalyzer")
+        @self.celery_app.task(
+            name="frontendanalyzer.do_search_signatures", queue="frontendanalyzer"
+        )
         def frontend_task(job_data: dict) -> str:
             self.logger.info(job_data)
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -204,7 +244,7 @@ class Worker:
                     json.dump(config, fp)
 
                 client = LocalApiClient(self.logger)
-                if self.__work(config, temp_path) != 0:
+                if self.__signature_search(config, temp_path) != 0:
                     # Analysis failed
                     with open(error_path, "r", encoding="utf-8") as fp:
                         error = fp.read()
@@ -247,6 +287,77 @@ class Worker:
 
                 client.update_status(
                     config["program"]["id"], "finished", "Analysis successfully ended"
+                )
+
+            return "Success"
+
+        @self.celery_app.task(
+            name="frontendanalyzer.do_autoload", queue="frontendanalyzer"
+        )
+        def autoload_task(job_data: dict) -> str:
+            self.logger.info(job_data)
+            program_id = job_data["program"]
+            client = LocalApiClient(self.logger)
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                binary_path = temp_path / "binary.bin"
+                config_path = temp_path / "config.json"
+                output_path = temp_path / "output.json"
+                error_path = temp_path / "error.log"
+
+                binary_data = Repo.download_sharefile(job_data["binary"])
+                if not isinstance(binary_data, bytes):
+                    client.update_status(
+                        program_id, "finished", "Failed to download binary"
+                    )
+                    return "Failure"
+
+                with open(binary_path, "wb") as fp:
+                    fp.write(binary_data)
+
+                # Minimal config: the detect script only needs these three paths.
+                config = {
+                    "file": str(binary_path),
+                    "output": str(output_path),
+                    "error": str(error_path),
+                }
+                with open(config_path, "w", encoding="utf-8") as fp:
+                    json.dump(config, fp)
+
+                client.update_status(
+                    program_id, "pending", "Detecting format and layout"
+                )
+
+                if self.__autoload(temp_path) != 0:
+                    error = "Autoload failed"
+                    try:
+                        with open(error_path, "r", encoding="utf-8") as fp:
+                            error = fp.read()
+                    except OSError:
+                        pass
+                    client.update_status(program_id, "finished", error)
+                    return "Failure"
+
+                # Any failure reading the result or pushing it back must still mark
+                # the analysis finished, otherwise the program is stuck "pending".
+                try:
+                    with open(output_path, "r", encoding="utf-8") as fp:
+                        result = json.load(fp)
+
+                    language = result.get("language")
+                    sections = result.get("sections", [])
+                    if language:
+                        client.set_language(program_id, language)
+                    client.create_sections(program_id, sections)
+                except Exception as e:  # noqa: BLE001 - report any failure to the UI
+                    client.update_status(
+                        program_id, "finished", f"Autoload failed to persist: {e}"
+                    )
+                    return "Failure"
+
+                client.update_status(
+                    program_id, "finished", "Autoload successfully ended"
                 )
 
             return "Success"
@@ -294,17 +405,11 @@ class Worker:
 
         return list(results.values())
 
-    def __work(self, config: dict, temp_path: Path) -> int:
-        # Environnement should not change, so create it once
-        env = self.__get_worker_env(config)
-        script_path = (
-            Path(__file__).parent.resolve()
-            / "ghidrascripts"
-            / "SightHouseFrontendScript.java"
-        )
+    def __run_script(self, script_name: str, temp_path: Path, env: dict) -> int:
+        """Run a bundled Ghidra script against the job's config.json, returning the
+        process exit code."""
+        script_path = Path(__file__).parent.resolve() / "ghidrascripts" / script_name
         logfile = temp_path / "application.log"
-
-        self.logger.debug("Started process frontendAnalyzer for analysis")
         return run_ghidra_script(
             self.ghidradir,
             script_path,
@@ -313,20 +418,28 @@ class Worker:
             logfile=logfile.absolute(),
         )[0]
 
-    def __get_worker_env(self, config: dict) -> dict[str, str]:
+    def __autoload(self, temp_path: Path) -> int:
+        env = os.environ.copy()
+        script_dir = Path(__file__).parent.resolve() / "ghidrascripts"
+        env["_JAVA_OPTIONS"] = f"-Dghidra.user.scripts.dir={script_dir}"
+        self.logger.debug("Started process autodetect for autoload")
+        return self.__run_script("SightHouseAutodetectScript.java", temp_path, env)
+
+    def __signature_search(self, config: dict, temp_path: Path) -> int:
         # Override username java properties so bsim client
         # won't complain when connecting
-        my_env = os.environ.copy()
-        my_env["_JAVA_OPTIONS"] = ""
+        env = os.environ.copy()
+        env["_JAVA_OPTIONS"] = ""
         for bsim_config in config["bsim"]["databases"]:
             if bsim_config["url"].startswith("postgresql://"):
-                my_env["_JAVA_OPTIONS"] = f"-Duser.name={bsim_config['user']} "
+                env["_JAVA_OPTIONS"] = f"-Duser.name={bsim_config['user']} "
                 break
 
         # Add user.scripts.dir property in case there other scripts with the same name
         script_path = Path(__file__).parent.resolve() / "ghidrascripts"
-        my_env["_JAVA_OPTIONS"] += f"-Dghidra.user.scripts.dir={script_path}"
-        return my_env
+        env["_JAVA_OPTIONS"] += f"-Dghidra.user.scripts.dir={script_path}"
+        self.logger.debug("Started process frontendAnalyzer for analysis")
+        return self.__run_script("SightHouseFrontendScript.java", temp_path, env)
 
 
 def main():

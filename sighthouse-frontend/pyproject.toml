@@ -21,7 +21,7 @@ dependencies = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-"*" = ["*.txt", "**/*.java"]
+"*" = ["*.txt", "**/*.java", "web/**"]
 
 [tool.black]
 line-length = 100

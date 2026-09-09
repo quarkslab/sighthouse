@@ -10,6 +10,8 @@ from sighthouse.cli import SightHouseCommandLine
 from sighthouse.client.install_binja import main as binja_main
 from sighthouse.client.install_ida import main as ida_main
 from sighthouse.client.install_ghidra import main as ghidra_main
+from sighthouse.client.SightHouseClient import AnalysisOptions
+from sighthouse.client.SightHouseClientStandalone import SightHouseClientStandalone
 
 _ENV_IDA_DIR = "IDA_DIR"
 _ENV_GHIDRA_INSTALL_DIR = "GHIDRA_INSTALL_DIR"
@@ -58,14 +60,14 @@ def install_sre_cmd_handler(self, args: Namespace, remaining: List[str]) -> None
 
     try:
         if sre == "binja":
-            print("[+] Installing SightHouse Binary Ninja client …")
+            print("[+] Installing SightHouse Binary Ninja client ...")
             _install_binja()
 
         elif sre == "ida":
             if not args.ida_dir:
                 print("[!] --ida-dir is required for IDA installation.")
                 return
-            print(f"[+] Installing SightHouse IDA client into {args.ida_dir} …")
+            print(f"[+] Installing SightHouse IDA client into {args.ida_dir} ...")
             _install_ida(args.ida_dir)
 
         elif sre == "ghidra":
@@ -73,7 +75,7 @@ def install_sre_cmd_handler(self, args: Namespace, remaining: List[str]) -> None
                 print("[!] --ghidra-install-dir is required for Ghidra installation.")
                 return
             print(
-                f"[+] Installing SightHouse Ghidra client into {args.ghidra_install_dir} …"
+                f"[+] Installing SightHouse Ghidra client into {args.ghidra_install_dir} ..."
             )
             _install_ghidra(args.ghidra_install_dir)
 
@@ -86,6 +88,29 @@ def install_sre_cmd_handler(self, args: Namespace, remaining: List[str]) -> None
 
     except FileNotFoundError as exc:
         print(f"[!] {exc}")
+
+
+def analyze_cmd_handler(self, args: Namespace, remaining: List[str]) -> None:
+    """Analyze a binary against the SightHouse signature server.
+
+    Auto-detects the language + layout by default. Can be overwritten
+    by setting --language/--load-addr
+    """
+    if args.insecure:
+        import urllib3
+
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    options = AnalysisOptions(bob_ross=False, auto_analysis=True)
+    analyzer = SightHouseClientStandalone(
+        args.url,
+        args.username,
+        args.password,
+        verify_host=not args.insecure,
+        force_submission=args.force,
+        options=options,
+    )
+    analyzer.run(args.filename, language=args.arch, load_addr=args.load_addr)
 
 
 # ---------------------------------------------------------------------------
@@ -133,4 +158,55 @@ def add_to_cli(app: SightHouseCommandLine) -> None:
         metavar="PATH",
         default=None,
         help="Path to the IDA Pro installation directory (required for 'ida').",
+    )
+
+    # -- analyze sub-command -------------------------------------------------
+    analyze_parser: ArgumentParser = parser_client.add_command(
+        "analyze",
+        analyze_cmd_handler,
+        help="Analyze a binary against the signature server",
+    )
+    analyze_parser.add_argument(
+        "url", metavar="URL", help="SightHouse frontend server URL"
+    )
+    analyze_parser.add_argument(
+        "username", metavar="USERNAME", help="Username to log in"
+    )
+    analyze_parser.add_argument(
+        "password", metavar="PASSWORD", help="Password to log in"
+    )
+    analyze_parser.add_argument(
+        "filename", metavar="FILE", help="Binary file to analyze"
+    )
+    analyze_parser.add_argument(
+        "-a",
+        "--arch",
+        default=None,
+        help="Ghidra language for a raw/baremetal image (e.g. ARM:LE:32:v8). When "
+        "set, auto-detection is skipped and the whole file is mapped as one RWX "
+        "section at --load-addr.",
+    )
+    analyze_parser.add_argument(
+        "-l",
+        "--load-addr",
+        dest="load_addr",
+        default=0,
+        type=lambda x: int(x, 0),
+        help="Base address for the raw mapping (hex or decimal). Default: 0.",
+    )
+    analyze_parser.add_argument(
+        "-k",
+        "--insecure",
+        dest="insecure",
+        default=False,
+        action="store_true",
+        help="Allow insecure server connections (skip TLS verification).",
+    )
+    analyze_parser.add_argument(
+        "-f",
+        "--force",
+        dest="force",
+        default=False,
+        action="store_true",
+        help="Replace a cached program of the same name and re-analyze.",
     )

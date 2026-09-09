@@ -87,8 +87,10 @@ markdown_extensions:
 nav:
   - Home: index.md
   - SRE Clients:
-    - Installation: clients/installation.md
-    - Quickstart: clients/quickstart.md 
+    - Binary Ninja: clients/binja.md
+    - Ghidra: clients/ghidra.md
+    - IDA: clients/ida.md
+    - Web Client: clients/web.md
   - Frontend:
     - Installation: frontend/installation.md
     - Quickstart: frontend/quickstart.md 

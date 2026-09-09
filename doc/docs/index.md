@@ -23,7 +23,7 @@ need to know what you want to install before proceeding. This mindchart should g
   <figcaption>SightHouse Mindchart</figcaption>
 </figure>
 
-- If you want to search for signatures inside you program, go [here](clients/quickstart/).
+- If you want to search for signatures inside you program, go [here](clients/quickstart/) (plugin not installed yet? see [installation](clients/installation/)).
 - If you have an **existing** database and want to host your own SightHouse server, go [here](frontend/quickstart/).
 - You want to create your own database and/or your own signatures, go [here](signature-pipeline/quickstart/).
 
