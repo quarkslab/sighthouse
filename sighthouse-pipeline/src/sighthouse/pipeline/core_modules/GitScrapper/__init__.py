@@ -258,7 +258,7 @@ class GitScrapper(Scrapper):
                 files.append(path)
 
         # Create tar archive
-        common_prefix, files = get_minimal_paths(files)
+        common_prefix, files = get_minimal_paths([Path(f).absolute() for f in files])
         back = Path.cwd()
         os.chdir(common_prefix)
         tar = create_tar(common_prefix, files).read()

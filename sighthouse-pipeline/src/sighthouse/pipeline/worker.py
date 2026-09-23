@@ -9,17 +9,6 @@ from uuid import uuid4
 import json
 import os
 
-
-def _healthcheck_path(worker_id: str) -> Path:
-    """Return a per-process healthcheck file path for the given worker id.
-
-    Uses the PID to avoid collisions when multiple instances of the same
-    module run on the same host.
-    """
-    sanitized = worker_id.replace(" ", "_")
-    return Path(f"/tmp/sighthouse_{sanitized}_{os.getpid()}.ready")
-
-
 from celery import Celery, signals
 from celery.app.task import Task
 from celery.worker.control import inspect_command
@@ -31,6 +20,16 @@ from sighthouse.core.utils import (
     get_minimal_paths,
     get_hash,
 )
+
+
+def _healthcheck_path(worker_id: str) -> Path:
+    """Return a per-process healthcheck file path for the given worker id.
+
+    Uses the PID to avoid collisions when multiple instances of the same
+    module run on the same host.
+    """
+    sanitized = worker_id.replace(" ", "_")
+    return Path(f"/tmp/sighthouse_{sanitized}_{os.getpid()}.ready")
 
 
 class ExecutionStep:
@@ -567,16 +566,19 @@ class CommonWorker:
             return
 
         self.log("Packing files")
-        common_prefix, files = get_minimal_paths(files)
+        common_prefix, files = get_minimal_paths([Path(f).absolute() for f in files])
         back = Path.cwd()
         os.chdir(common_prefix)
         tar = create_tar(common_prefix, files).read()
         os.chdir(back)
-        name = f"{name if name else get_hash(tar)}.tar.gz"
+        hashval = get_hash(tar)
+        name = f"{name if name else hashval}.tar.gz"
 
         if self.push_file(name, tar):
             self.log(f"Publish file: {name}")
             job.job_data.update({"file": name})
+            if "hash" not in job.job_data:
+                job.job_data["hash"] = hashval
             if step:
                 self.send_task(job, step=step)
             else:

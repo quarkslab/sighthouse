@@ -1,0 +1,5 @@
+name: Upload Scrapper 
+description: Scrapper to upload binaries directly to the analyzer 
+version: 1.0.0
+author: Sighthouse Core Team 
+license: MIT

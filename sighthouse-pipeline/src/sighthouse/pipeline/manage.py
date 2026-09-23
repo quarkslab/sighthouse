@@ -252,7 +252,7 @@ class PipelineManager:
     def __init__(self, worker_url: str, repo_url: str, logger: Logger):
         repo = Repo(repo_url, secure=False)
         self._repo = RepoCache(
-            repo, self.DEFAULT_CACHE_PATH / (repo._uri["host"] or "local"), logger
+            repo, self.DEFAULT_CACHE_PATH / (repo._uri.get("host", "local")), logger
         )
         self._celery_app = Celery(
             broker=worker_url,
