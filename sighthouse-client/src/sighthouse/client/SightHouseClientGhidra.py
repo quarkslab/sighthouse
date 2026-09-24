@@ -52,11 +52,12 @@ from sighthouse.client.SightHouseClient import (
     AnalysisOptions,
 )
 
-PREF_KEY_URL = "sighthouse.form.url"
-PREF_KEY_USERNAME = "sighthouse.form.username"
-PREF_KEY_PASSWORD = "sighthouse.form.password"
-PREF_KEY_VERIFY_HOST = "sighthouse.form.verify_host"
-PREF_KEY_FORCE_SUBMISSION = "sighthouse.form.force_submission"
+PREF_KEY_URL = "sighthouse.serverURL"
+PREF_KEY_USERNAME = "sighthouse.username"
+PREF_KEY_PASSWORD = "sighthouse.password"
+PREF_KEY_VERIFY_HOST = "sighthouse.verify_host"
+PREF_KEY_FORCE_SUBMISSION = "sighthouse.force_submission"
+PREF_KEY_BOB_ROSS = "sighthouse.bob_ross"
 
 
 class LoggingGhidraSighthouse(LoggingSighthouse):
@@ -139,6 +140,7 @@ class SightHouseGhidraAnalysis(SightHouseAnalysis):
             message (str): message to show
         """
         self._monitor.increment()
+        self._monitor.setMessage(message)
         print(message)
 
     def get_program_name(self) -> str:
@@ -278,7 +280,8 @@ class SightHouseGhidraAnalysis(SightHouseAnalysis):
     def run(self, monitor) -> None:
         """Run the complete analysis"""
         self._monitor = monitor
-        self._monitor.initialize(99999)
+        self._monitor.initialize(3600)  # Script running for ~1H should be stopped
+        self._monitor.setIndeterminate(True)
         # Create a transaction to save/rollback changes
         transaction = self.prgm.startTransaction(self.__class__.__name__)
         commit = True
@@ -291,10 +294,9 @@ class SightHouseGhidraAnalysis(SightHouseAnalysis):
 
 
 class UserFormPlugin:
-    def __init__(self, program, title="SighthousePlugin Configuration"):
+    def __init__(self, title: str = "SighthousePlugin Configuration"):
         # Create the JDialog instance
         parent = Frame()
-        self.program = program
         self.dialog = JDialog(parent, title, True)  # Modal dialog
         self.dialog.setSize(400, 300)
         self.dialog.setLayout(GridBagLayout())  # Use a flexible layout
@@ -388,7 +390,7 @@ class UserFormPlugin:
 
         self.dialog.add(submit_button, self.gbc)
 
-    def create_label(self, text):
+    def create_label(self, text: str):
         """Create a styled JLabel."""
         label = JLabel(text)
         label.setOpaque(True)
@@ -396,7 +398,7 @@ class UserFormPlugin:
         label.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5))
         return label
 
-    def create_textfield(self, columns):
+    def create_textfield(self, columns: int):
         """Create a styled JTextField."""
         textfield = JTextField(columns)
         textfield.setPreferredSize(Dimension(250, 30))
@@ -422,7 +424,7 @@ class UserFormPlugin:
         )
         return textfield
 
-    def create_passwordfield(self, columns):
+    def create_passwordfield(self, columns: int):
         """Create a styled JPasswordField."""
         password_field = JPasswordField(columns)
         password_field.setPreferredSize(Dimension(250, 30))
@@ -435,38 +437,35 @@ class UserFormPlugin:
         )
         return password_field
 
-    def save_form_data(self, url, username, password, verify_host, force_submission):
+    def save_form_data(
+        self, url, username, password, verify_host, force_submission, bob_ross
+    ):
         """Save form data to Ghidra preferences."""
-        # preference_state = Preferences.getPreferenceState()
         Preferences.setProperty(PREF_KEY_URL, url)
         Preferences.setProperty(PREF_KEY_USERNAME, username)
         Preferences.setProperty(PREF_KEY_PASSWORD, password)
-        if verify_host:
-            Preferences.setProperty(PREF_KEY_VERIFY_HOST, "True")
-        else:
-            Preferences.setProperty(PREF_KEY_VERIFY_HOST, "False")
-
-        if force_submission:
-            Preferences.setProperty(PREF_KEY_FORCE_SUBMISSION, "True")
-        else:
-            Preferences.setProperty(PREF_KEY_FORCE_SUBMISSION, "False")
-        # Preferences.savePreferences()
+        Preferences.setProperty(
+            PREF_KEY_VERIFY_HOST, "True" if verify_host else "False"
+        )
+        Preferences.setProperty(
+            PREF_KEY_FORCE_SUBMISSION, "True" if force_submission else "False"
+        )
+        Preferences.setProperty(PREF_KEY_BOB_ROSS, "True" if bob_ross else "False")
 
     def load_form_data(self):
         """Load form data from Ghidra preferences."""
-        # preference_state = Preferences.getPreferenceState()
         self.url_field.setText(Preferences.getProperty(PREF_KEY_URL, ""))
         self.username_field.setText(Preferences.getProperty(PREF_KEY_USERNAME, ""))
         self.password_field.setText(Preferences.getProperty(PREF_KEY_PASSWORD, ""))
-        if Preferences.getProperty(PREF_KEY_VERIFY_HOST, "True") == "True":
-            self.verify_host_field.setSelected(True)
-        else:
-            self.verify_host_field.setSelected(False)
-
-        if Preferences.getProperty(PREF_KEY_FORCE_SUBMISSION, "True") == "True":
-            self.force_submission_field.setSelected(True)
-        else:
-            self.force_submission_field.setSelected(False)
+        self.verify_host_field.setSelected(
+            Preferences.getProperty(PREF_KEY_VERIFY_HOST, "True") == "True"
+        )
+        self.force_submission_field.setSelected(
+            Preferences.getProperty(PREF_KEY_FORCE_SUBMISSION, "True") == "True"
+        )
+        self.bob_ross_field.setSelected(
+            Preferences.getProperty(PREF_KEY_BOB_ROSS, "True") == "True"
+        )
 
     def on_submit(self, event):
         """Handle form submission."""
@@ -488,24 +487,11 @@ class UserFormPlugin:
                 JOptionPane.ERROR_MESSAGE,
             )
         else:
-            self.save_form_data(url, username, password, verify_host, force_submission)
-            # JOptionPane.showMessageDialog(
-            #    self.dialog,
-            #    f"You entered:\nURL: {url}\nUsername: {username}\nPassword: {'*' * len(password)}",
-            # )
-
+            self.save_form_data(
+                url, username, password, verify_host, force_submission, bob_ross
+            )
             # Close the dialog
             self.dialog.dispose()
-        analyzer = SightHouseGhidraAnalysis(
-            self.program,
-            url,
-            username,
-            password,
-            verify_host,
-            force_submission,
-            options=AnalysisOptions(bob_ross=bob_ross, auto_analysis=False),
-        )
-        analyzer.run(getMonitor())
 
     def show(self):
         """Display the dialog."""
@@ -518,13 +504,30 @@ if __name__ == "__main__":
     if currentProgram == None:
         log.error("No program opened!")
         sys.exit(1)
+
     args = getScriptArgs()
     if len(args) == 0:
-        UserFormPlugin(program=currentProgram).show()
+        UserFormPlugin().show()
+        url = Preferences.getProperty(PREF_KEY_URL, "")
+        username = Preferences.getProperty(PREF_KEY_USERNAME, "")
+        password = Preferences.getProperty(PREF_KEY_PASSWORD, "")
+        verify_host = Preferences.getProperty(PREF_KEY_VERIFY_HOST, "True") == "True"
+        force_submission = (
+            Preferences.getProperty(PREF_KEY_FORCE_SUBMISSION, "True") == "True"
+        )
+        bob_ross = Preferences.getProperty(PREF_KEY_BOB_ROSS, "True") == "True"
 
-        # url = askString("Please enter sighthouse URL", "URL: ", "http://localhost:6669")
-        # username = askString("Please enter your username", "Username: ")
-        # password = str(askPassword("Password", None).getPasswordChars())
+        analyzer = SightHouseGhidraAnalysis(
+            currentProgram,
+            url,
+            username,
+            password,
+            verify_host,
+            force_submission,
+            options=AnalysisOptions(bob_ross=bob_ross, auto_analysis=False),
+        )
+        analyzer.run(getMonitor())
+
     else:
         parser = argparse.ArgumentParser("SightHouse")
         parser.add_argument("url", help="SightHouse server URL")

@@ -32,6 +32,13 @@ except ModuleNotFoundError:
 
 from typing import List, Tuple
 
+PREF_KEY_URL = "sighthouse.serverURL"
+PREF_KEY_USERNAME = "sighthouse.username"
+PREF_KEY_PASSWORD = "sighthouse.password"
+PREF_KEY_VERIFY_HOST = "sighthouse.verify_host"
+PREF_KEY_FORCE_SUBMISSION = "sighthouse.force_submission"
+PREF_KEY_BOB_ROSS = "sighthouse.bob_ross"
+
 
 class LoggingBinjaSighthouse(LoggingSighthouse):
 
@@ -225,12 +232,12 @@ class SightHouseBinjaAnalysis(SightHouseAnalysis, binaryninja.BackgroundTaskThre
 
 def run_plugin(bv: binaryninja.BinaryView) -> None:
     settings = binaryninja.Settings()
-    url = settings.get_string("sighthouse.serverURL")
-    username = settings.get_string("sighthouse.username")
-    password = settings.get_string("sighthouse.password")
-    verify_host = settings.get_bool("sighthouse.verify_host")
-    bob_ross = settings.get_bool("sighthouse.bob_ross")
-    force_submission = settings.get_bool("sighthouse.force_submission")
+    url = settings.get_string(PREF_KEY_URL)
+    username = settings.get_string(PREF_KEY_USERNAME)
+    password = settings.get_string(PREF_KEY_PASSWORD)
+    verify_host = settings.get_bool(PREF_KEY_VERIFY_HOST)
+    bob_ross = settings.get_bool(PREF_KEY_BOB_ROSS)
+    force_submission = settings.get_bool(PREF_KEY_FORCE_SUBMISSION)
     analyzer = SightHouseBinjaAnalysis(
         bv,
         url,
@@ -281,7 +288,7 @@ else:
     }
     settings.register_group("sighthouse", "SightHouse client")
     settings.register_setting(
-        "sighthouse.serverURL",
+        PREF_KEY_URL,
         json.dumps(
             {
                 "title": "Server URL",
@@ -292,7 +299,7 @@ else:
         ),
     )
     settings.register_setting(
-        "sighthouse.username",
+        PREF_KEY_USERNAME,
         json.dumps(
             {
                 "title": "Server username",
@@ -303,7 +310,7 @@ else:
         ),
     )
     settings.register_setting(
-        "sighthouse.password",
+        PREF_KEY_PASSWORD,
         json.dumps(
             {
                 "title": "Server password",
@@ -314,7 +321,7 @@ else:
         ),
     )
     settings.register_setting(
-        "sighthouse.verify_host",
+        PREF_KEY_VERIFY_HOST,
         json.dumps(
             {
                 "title": "Verify server certificate",
@@ -327,7 +334,7 @@ else:
     )
 
     settings.register_setting(
-        "sighthouse.bob_ross",
+        PREF_KEY_BOB_ROSS,
         json.dumps(
             {
                 "title": "Experimental Algorithme to enhance matches",
@@ -340,7 +347,7 @@ else:
     )
 
     settings.register_setting(
-        "sighthouse.force_submission",
+        PREF_KEY_FORCE_SUBMISSION,
         json.dumps(
             {
                 "title": "Force submission",

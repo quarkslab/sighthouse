@@ -10,6 +10,9 @@ import hashlib
 import json
 import time
 
+# Disable insecure warnings
+requests.urllib3.disable_warnings()
+
 
 def get_hash(data: bytes) -> str:
     """Compute the SHA256 of the given data"""
@@ -613,11 +616,17 @@ class SightHouseClient(object):
             if not isinstance(analysis, dict):
                 self._logger.error(f"No Analysis")
                 return False
+
             info = analysis.get("info")
             if not info:
                 self._logger.error(f"No Analysis")
                 return False
-            self._logger.info(f"{info.get('status')} : {info.get('progress')}")
+
+            msg = f"Analysis is {info.get('status')}"
+            if isinstance(info.get("progress"), str):
+                msg += f": {info.get('progress')}"
+            self._logger.info(msg)
+
             if info.get("status") != "finished":
                 return True
         except requests.exceptions.HTTPError:

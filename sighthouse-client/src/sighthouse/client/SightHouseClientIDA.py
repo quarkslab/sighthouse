@@ -28,7 +28,6 @@ class LoggingIDASighthouse(object):
 
     def __init__(self) -> None:
         """Initialize logging class"""
-        # TOD0
 
     def error(self, message: str):
         """Show an error message
@@ -36,7 +35,6 @@ class LoggingIDASighthouse(object):
         Args:
             message (str): The message to show
         """
-        # TODO
         ida_kernwin.warning(message)
 
     def warning(self, message: str):
@@ -45,7 +43,6 @@ class LoggingIDASighthouse(object):
         Args:
             message (str): The message to show
         """
-        # TODO
         ida_kernwin.warning(message)
 
     def info(self, message: str):
@@ -54,7 +51,6 @@ class LoggingIDASighthouse(object):
         Args:
             message (str): The message to show
         """
-        # TODO
         ida_kernwin.msg(message)
 
 
