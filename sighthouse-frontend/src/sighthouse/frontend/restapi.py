@@ -65,8 +65,7 @@ class FrontendRestAPI(ServerThread):
         database: FrontendDatabase,
         celery_url: str,
         ghidra_dir: Path,
-        bsims: Optional[List[str]],
-        fidbs: Optional[List[str]],
+        urls: Optional[List[str]],
         logger: Logger,
         host: str = "0.0.0.0",
         port: int = 6671,
@@ -84,8 +83,7 @@ class FrontendRestAPI(ServerThread):
         self.__languages_cache: Optional[List[str]] = (
             None  # lazily-filled Ghidra language list
         )
-        self.__fidbs = fidbs or []
-        self.__bsims = bsims or []
+        self.__urls = urls or []
         self.__celery_app = Celery("", broker=celery_url, backend=celery_url)  # Useless
         self.__static_dir = Path(self.__app.root_path) / "web"
 
@@ -669,42 +667,31 @@ class FrontendRestAPI(ServerThread):
                     500,
                 )
 
-            bsims = [parse_uri(e) for e in self.__bsims]
-            fidbs = [parse_uri(e) for e in self.__fidbs]
+            # Dedup urls
+            urls = [parse_uri(e) for e in self.__urls]
+            databases = []
+            seen_urls = set()
+            for e in urls:
+                url = (
+                    f"{e['type']}://{e['host']}:{e['port']}/{e['dbname']}"
+                    if "dbname" in e
+                    else str(e["database"])
+                )
+                if url not in seen_urls:
+                    seen_urls.add(url)
+                    databases.append(
+                        {
+                            "url": url,
+                            "user": e.get("user", ""),
+                            "password": e.get("password") or "",
+                        }
+                    )
+
             config = {
                 "program": self.__jsonify_program(program),
-                "bsim": {
-                    "enabled": True,
-                    "databases": [
-                        {
-                            "url": (
-                                f"{e['type']}://{e['host']}:{e['port']}/{e['dbname']}"
-                                if "dbname" in e
-                                else str(e["database"])
-                            ),
-                            "user": e.get("user", ""),
-                            "password": e.get("password") or "",
-                        }
-                        for e in bsims
-                    ],
-                    **DEFAULT_BSIM_OPTIONS,
-                },
-                "fidb": {
-                    "enabled": True,
-                    "databases": [
-                        {
-                            "url": (
-                                f"{e['type']}://{e['host']}:{e['port']}/{e['dbname']}"
-                                if "dbname" in e
-                                else str(e["database"])
-                            ),
-                            "user": e.get("user", ""),
-                            "password": e.get("password") or "",
-                        }
-                        for e in fidbs
-                    ],
-                    **DEFAULT_FIDB_OPTIONS,
-                },
+                "databases": databases,
+                "bsim": {**DEFAULT_BSIM_OPTIONS},
+                "fidb": {**DEFAULT_FIDB_OPTIONS},
             }
             upload_file_config = (
                 self.__database.get_upload_dir(program.user)

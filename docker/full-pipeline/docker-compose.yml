@@ -50,13 +50,17 @@ services:
       interval: "30s"
       timeout: "5s"
 
-  create_bsim_db_postgres:
-    image: ${BASE_URL}/create_bsim_db:${VERSION} 
-    command: 'user "" bsim_postgres postgresql 5432'
+  create_sighthouse_db:
+    image: ${BASE_URL}/sighthouse-pipeline:${VERSION}
+    command: [
+      "database", "create", "--type", "sighthouse",
+      "-g", "/ghidra", "-u", "user",
+      "postgresql://user@bsim_postgres:5432/bsim",
+    ]
     depends_on:
       bsim_postgres:
         condition: service_healthy
-    restart: no
+    restart: "no"
 
   ghidra_analyzer1:
     image: ${BASE_URL}/sighthouse-pipeline:${VERSION}

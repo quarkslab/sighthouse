@@ -12,6 +12,10 @@ from sighthouse.pipeline.worker import Job
 from sighthouse.pipeline.package import PackageLoader
 from sighthouse.pipeline.manage import PipelineManager
 from sighthouse.core.utils import is_stdin_piped
+from sighthouse.core.utils.analyzer import (
+    create_bsim_database,
+    create_sighthouse_database,
+)
 
 
 def install_package_cmd_handler(self, args: Namespace, remaining: List[str]) -> None:
@@ -157,6 +161,26 @@ def start_pipeline_cmd_handler(self, args: Namespace, remaining: List[str]) -> N
     logger = getLogger(__name__)
     manager = PipelineManager(args.worker, args.repo, logger)
     manager.start_pipeline(args.pipeline)
+
+
+def create_database_cmd_handler(self, args: Namespace, remaining: List[str]) -> None:
+    """Create a BSIM or a SightHouse database"""
+    basicConfig(level=INFO if not args.debug else DEBUG)
+    # SightHouse databases are built on top of a BSIM one, so both share
+    # the same arguments.
+    callback = (
+        create_bsim_database if args.type == "bsim" else create_sighthouse_database
+    )
+    if callback(
+        Path(args.ghidra),
+        args.url,
+        config_template=args.template,
+        username=args.user,
+    ):
+        print(f"Successfully created {args.type} database")
+    else:
+        print(f"Fail to create {args.type} database")
+        sys.exit(1)
 
 
 def add_to_cli(app: SightHouseCommandLine) -> None:
@@ -306,4 +330,38 @@ def add_to_cli(app: SightHouseCommandLine) -> None:
         if parser_pipeline_start is not None:
             parser_pipeline_start.add_argument(
                 "pipeline", help="Path to pipeline YAML configuration"
+            )
+
+    # Setup database argument parser
+    parser_database = app.add_command_group(
+        "database", "database_command", help="Manage the %(prog)s database"
+    )
+    if parser_database is not None:
+        parser_database_create = parser_database.add_command(
+            "create",
+            create_database_cmd_handler,
+            help="Create a BSIM or SightHouse database",
+        )
+        if parser_database_create is not None:
+            parser_database_create.add_argument(
+                "--type",
+                choices=["bsim", "sighthouse"],
+                default="sighthouse",
+                help="Kind of database to create (default: sighthouse)",
+            )
+            parser_database_create.add_argument(
+                "-g", "--ghidra", required=True, help="Path to the Ghidra installation"
+            )
+            parser_database_create.add_argument(
+                "-u", "--user", default="bsim_user", help="Database user name"
+            )
+            parser_database_create.add_argument(
+                "-t",
+                "--template",
+                default="medium_nosize",
+                help="BSIM weight template: large_32 | medium_32 | medium_64 | "
+                "medium_cpool | medium_nosize (default: medium_nosize)",
+            )
+            parser_database_create.add_argument(
+                "url", nargs="+", help="PostgreSQL URL(s) of the database(s) to create"
             )

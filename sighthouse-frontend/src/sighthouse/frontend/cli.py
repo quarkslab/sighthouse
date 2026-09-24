@@ -107,8 +107,7 @@ def start_frontent_cmd_handler(self, args: Namespace, remaining: List[str]) -> N
         database,
         args.worker_url,
         Path(args.ghidra_dir),
-        args.bsim_url,
-        args.fidb_url,
+        args.urls,
         logger,
     )
 
@@ -237,20 +236,12 @@ def add_to_cli(app: SightHouseCommandLine) -> None:
         )
         if parser_frontend_start is not None:
             parser_frontend_start.add_argument(
-                "-b",
-                "--bsim-url",
+                "-u",
+                "--urls",
                 type=str,
                 nargs="+",
-                help="List of BSIM urls",
+                help="List of SightHouse database urls",
                 # default=["postgresql://bsim_user:password@localhost:5432/bsim"],
-            )
-            parser_frontend_start.add_argument(
-                "-f",
-                "--fidb-url",
-                type=str,
-                nargs="+",
-                help="List of FIDB urls",
-                # default=["local://fidb.sig"],
             )
             parser_frontend_start.add_argument(
                 "-w",

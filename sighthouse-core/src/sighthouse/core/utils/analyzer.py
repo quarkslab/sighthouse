@@ -7,6 +7,7 @@ from pathlib import Path
 from os import environ
 
 from sighthouse.core.utils import run_process  # type: ignore[import-untyped]
+from sighthouse.core.utils.database import Database
 
 
 def clean_install(ghidradir: Path, jars: Optional[List[str]] = None) -> None:
@@ -119,6 +120,110 @@ def create_bsim_database(
             return False
 
     return True
+
+
+def create_sighthouse_database(
+    ghidradir: Path,
+    urls: list[str],
+    config_template: str = "medium_nosize",
+    username: str = "bsim_user",
+    capture_output: bool = False,
+) -> bool:
+    """Create an empty SightHouse database (built on top of the BSIM one).
+
+    Warning: The new database is NOT guaranteed to be compatible with the ghidra BSIM client.
+
+    Enumerated Options:
+        <config_template> - large_32 | medium_32 | medium_64 | medium_cpool | medium_nosize
+    """
+    for url in urls:
+        if not url.startswith("postgres"):
+            raise ValueError(
+                "Unsupported database format. Only PostgreSQL is supported"
+            )
+
+    if not create_bsim_database(
+        ghidradir,
+        urls,
+        config_template=config_template,
+        username=username,
+        capture_output=capture_output,
+    ):
+        # Failed to create the bsim database, abort
+        return False
+
+    # Lazy import
+    import psycopg
+
+    success = True
+    # Add our custom tables on top of BSIM ones.
+    for url in urls:
+        handle = Database(url)
+        try:
+            handle.execute("""
+                CREATE TABLE IF NOT EXISTS project (
+                    id           BIGSERIAL PRIMARY KEY,
+                    origin       TEXT,
+                    name         TEXT,
+                    version      TEXT,
+                    ingest_date  TIMESTAMPTZ DEFAULT now(),
+                    UNIQUE (origin, name, version)
+                );
+            """)
+
+            handle.execute("""
+                CREATE TABLE IF NOT EXISTS program (
+                    id            BIGSERIAL PRIMARY KEY,
+                    md5           TEXT UNIQUE,
+                    name          TEXT,
+                    id_arch       INTEGER REFERENCES archtable(id)
+                );
+            """)
+
+            handle.execute("""
+                CREATE TABLE IF NOT EXISTS project_program (
+                    id_project  BIGINT REFERENCES project(id) ON DELETE CASCADE,
+                    id_program  BIGINT REFERENCES program(id) ON DELETE CASCADE,
+                    PRIMARY KEY (id_project, id_program)
+                );
+            """)
+
+            handle.execute("""
+                CREATE TABLE IF NOT EXISTS fidb (
+                    id                            BIGSERIAL PRIMARY KEY,
+                    full_hash                     BIGINT,
+                    specific_hash                 BIGINT,
+                    specific_hash_additional_size SMALLINT,
+                    code_unit_size                SMALLINT,
+                    UNIQUE (full_hash, specific_hash, specific_hash_additional_size, code_unit_size)
+                );
+            """)
+            handle.execute(
+                "CREATE INDEX IF NOT EXISTS fidb_full_hash_idx ON fidb (full_hash);"
+            )
+
+            handle.execute("""
+                CREATE TABLE IF NOT EXISTS functions (
+                    id            BIGSERIAL PRIMARY KEY,
+                    id_program    BIGINT REFERENCES program(id) ON DELETE CASCADE,
+                    name          TEXT,
+                    id_vector     BIGINT REFERENCES vectable(id),
+                    id_fidb       BIGINT REFERENCES fidb(id)
+                );
+            """)
+            handle.execute(
+                "CREATE INDEX IF NOT EXISTS functions_id_vector_idx ON functions (id_vector);"
+            )
+            handle.execute(
+                "CREATE INDEX IF NOT EXISTS functions_id_fidb_idx   ON functions (id_fidb);"
+            )
+        except psycopg.Error:
+            # Failed to create one or more tables, fail
+            success = False
+        finally:
+            handle.close()
+
+    return success
 
 
 def run_ghidra_script(

@@ -252,8 +252,11 @@ workers:
   - name: analyzer
     package: Ghidra Analyzer
     args:
+      urls:
+        - postgresql://user@bsim_postgres:5432/bsim
       bsim:
-        urls:
-          - postgresql://user@bsim_postgres:5432/bsim
         min_instructions: 10
+        max_instructions: 0
+      fidb:
+        min_instructions: 2
         max_instructions: 0

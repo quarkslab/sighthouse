@@ -26,21 +26,7 @@ import java.io.PrintWriter;
 import java.io.FileWriter;
 import java.io.Writer;
 
-// Authenticator
-import javax.security.auth.callback.ChoiceCallback;
-import javax.security.auth.callback.NameCallback;
-import javax.security.auth.callback.PasswordCallback;
-import java.awt.Component;
-import javax.security.auth.callback.*;
-import java.util.ArrayList;
-import ghidra.framework.remote.SSHSignatureCallback;
-import ghidra.framework.client.ClientAuthenticator;
-import ghidra.framework.client.ClientUtil;
-import ghidra.framework.remote.AnonymousCallback;
-import java.net.Authenticator;
-import java.net.PasswordAuthentication;
-
-// Data structures 
+// Data structures
 import java.util.List;
 import java.util.ArrayList;
 import java.util.function.Predicate;
@@ -49,6 +35,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Iterator;
 import java.math.BigInteger;
 
@@ -71,10 +58,6 @@ import ghidra.program.model.lang.LanguageNotFoundException;
 import ghidra.program.util.DefaultLanguageService;
 
 // Import API
-// import ghidra.app.util.importer.SingleLoaderFilter;
-// import ghidra.app.util.importer.LcsHintLoadSpecChooser;
-// import ghidra.app.util.importer.OptionChooser;
-// import ghidra.app.util.importer.AutoImporter;
 import ghidra.app.util.Option;
 import ghidra.app.util.opinion.LoaderTier;
 import ghidra.app.util.opinion.Loaded;
@@ -104,17 +87,14 @@ import ghidra.program.model.listing.ProgramContext;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Listing;
-import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.InstructionIterator;
 import ghidra.program.model.listing.ContextChangeException;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.address.AddressSet;
-import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.util.AddressSetPropertyMap;
-import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.framework.model.Project;
@@ -127,27 +107,24 @@ import ghidra.formats.gfilesystem.FileSystemService;
 import ghidra.formats.gfilesystem.FSRL;
 import ghidra.app.util.bin.ByteProvider;
 
-// BSIM
-import java.net.URL;
-import ghidra.features.bsim.query.BSimClientFactory;
-import ghidra.features.bsim.query.BSimServerInfo;
-import ghidra.features.bsim.query.BSimServerInfo.DBType;
-import ghidra.features.bsim.query.FunctionDatabase;
-import ghidra.features.bsim.query.FunctionDatabase.BSimError;
-import ghidra.features.bsim.query.FunctionDatabase.ErrorCategory;
-import ghidra.features.bsim.query.FunctionDatabase.Status;
+// BSIM signature generation
+import generic.lsh.vector.LSHVector;
+import generic.lsh.vector.LSHVectorFactory;
+import generic.lsh.vector.WeightedLSHCosineVectorFactory;
+import generic.lsh.vector.WeightFactory;
+import generic.lsh.vector.IDFLookup;
 import ghidra.features.bsim.query.GenSignatures;
-import ghidra.features.bsim.query.LSHException;
+import ghidra.features.bsim.query.client.tables.WeightTable;
+import ghidra.features.bsim.query.client.tables.IdfLookupTable;
+import ghidra.features.bsim.query.client.tables.KeyValueTable;
 import ghidra.features.bsim.query.description.DescriptionManager;
-import ghidra.features.bsim.query.description.ExecutableRecord;
 import ghidra.features.bsim.query.description.FunctionDescription;
-import ghidra.features.bsim.query.protocol.InsertRequest;
-import ghidra.features.bsim.query.protocol.QueryExeCount;
-import ghidra.features.bsim.query.protocol.ResponseExe;
-import ghidra.features.bsim.query.protocol.SimilarityResult;
-import ghidra.features.bsim.query.protocol.QueryNearest;
-import ghidra.features.bsim.query.protocol.ResponseNearest;
-import ghidra.features.bsim.query.protocol.SimilarityNote;
+import ghidra.features.bsim.query.description.SignatureRecord;
+
+// FIDB signature generation
+import ghidra.feature.fid.service.FidService;
+import ghidra.feature.fid.hash.FidHasher;
+import ghidra.feature.fid.hash.FidHashQuad;
 
 // JSON & API
 import com.google.gson.Gson;
@@ -337,11 +314,13 @@ class SightHouseMatch {
 // --- Configuration Stuff -----------------------------------------------------
 
 class SightHouseConfiguration {
-  private String file; 
+  private String file;
   private String output;
   private String error;
   private SightHouseProgram program;
+  private List<DatabaseConfiguration> databases;
   private BsimConfiguration bsim;
+  private FidbConfiguration fidb;
   private AnalysisOptions options;
 
   // Getters and Setters
@@ -349,7 +328,9 @@ class SightHouseConfiguration {
   public String getOutput() { return output; }
   public String getErrorLog() { return error; }
   public SightHouseProgram getProgram() { return program; }
+  public List<DatabaseConfiguration> getDatabases() { return databases; }
   public BsimConfiguration getBsim() { return bsim; }
+  public FidbConfiguration getFidb() { return fidb; }
   public AnalysisOptions getAnalysisOptions() { return options; }
 }
 
@@ -361,76 +342,224 @@ class AnalysisOptions {
 }
 
 class BsimConfiguration {
-  private boolean enabled;
   private int min_instructions = 10;    // Mininum number of instruction to filter function
-  private int max_instructions = 0;     // Maximum number of instruction to filter function (No maximum by default)
-  private int number_of_matches = 10;   // Max number of matches per function 
-  private double similarity = 0.7;       // Similarity threshold [0:1]  
-  private double confidence = 1.0;       // Confidence threshold [0:+inf]
-  private List<DatabaseConfiguration> databases = null;
+  private int max_instructions = -1;    // Maximum number of instruction to filter function (No maximum by default)
+  private int number_of_matches = 10;   // Max number of matches per function
+  private double similarity = 0.7;      // Similarity threshold [0:1]
+  private double confidence = 1.0;      // Confidence threshold [0:+inf]
 
   // Getters and Setters
-  public boolean isEnabled() { return enabled; }
   public int getMinNumberOfInstructions() { return min_instructions; }
   public int getMaxNumberOfInstructions() { return max_instructions; }
   public int getMaxNumberOfMatches() { return number_of_matches; }
   public double getConfidence() { return confidence; }
   public double getSimilarity() { return similarity; }
-  public List<DatabaseConfiguration> getDatabases() { return databases; }
 }
 
-class SightHouseClientAuthenticator implements ClientAuthenticator {
-  private String userID = ClientUtil.getUserName(); // default user
-  private String password = null;
-  private Authenticator authenticator = new Authenticator() {
-    @Override
-    protected PasswordAuthentication getPasswordAuthentication() {
-      System.out.println("PasswordAuthentication requested for " + getRequestingURL());
-      return new PasswordAuthentication(userID, password.toCharArray());
-    }
-  };
+class FidbConfiguration {
+  private int min_instructions = 2;     // Mininum number of instruction to filter function
+  private int max_instructions = -1;    // Maximum number of instruction to filter function (No maximum by default)
 
-  public void setCredentials(String newUsername, String newPassword) {
-    this.userID = newUsername;
-    this.password = newPassword;
-  }
-
-  public Authenticator getAuthenticator() {
-    return authenticator;
-  }
-
-  // Stub that need to be implemented but not used
-  public boolean processPasswordCallbacks(String title, String serverType, String serverName, boolean allowUserNameEntry,
-      NameCallback nameCb, PasswordCallback passCb, ChoiceCallback choiceCb,
-      AnonymousCallback anonymousCb, String loginError) {
-    return false;
-  }
-  public boolean promptForReconnect(Component parent, final String message) { return false; }
-  public char[] getNewPassword(Component parent, String serverInfo, String user) { return null; }
-  public char[] getKeyStorePassword(String keystorePath, boolean passwordError) { return null; }
-  public boolean isSSHKeyAvailable() { return false; }
-  public boolean processSSHSignatureCallbacks(String serverName, NameCallback nameCb, SSHSignatureCallback sshCb) { return false; }
+  // Getters and Setters
+  public int getMinNumberOfInstructions() { return min_instructions; }
+  public int getMaxNumberOfInstructions() { return max_instructions; }
 }
 
 class DatabaseConfiguration {
   private String url;
   private String user;
   private String password;
-  // This field dos not need to be serialized
-  private transient SightHouseClientAuthenticator authenticator = null;
 
   // Getters and Setters
   public String getUrl() { return url; }
   public String getUsername() { return user; }
   public String getPassword() { return password; }
-  public ClientAuthenticator getAuthenticator() {
-    // Create the authenticator if does not already exists
-    if (this.authenticator == null) {
-      this.authenticator = new SightHouseClientAuthenticator();
-      this.authenticator.setCredentials(this.user, this.password);
-    }
-    return this.authenticator;
+}
+
+// --- SightHouse Database DAO -------------------------------------------------
+
+// JDBC controller for the SightHouse custom tables.
+class SightHouseDatabase {
+
+  private Connection connection;
+
+  public SightHouseDatabase(String url, String username, String password) throws SQLException {
+    this.connection = DriverManager.getConnection(toJdbcUrl(url), username, password);
+    this.connection.setAutoCommit(false);
   }
+
+  // Turn a configuration url ("postgresql://user@host:5432/db") into a JDBC url.
+  private static String toJdbcUrl(String url) throws SQLException {
+    if (!url.startsWith("postgresql://") && !url.startsWith("postgres://")) {
+      throw new SQLException("Unsupported database url (expected postgresql://): " + url);
+    }
+    int schemeEnd = url.indexOf("://") + 3;
+    int at = url.indexOf('@', schemeEnd);
+    String authority = (at >= 0) ? url.substring(at + 1) : url.substring(schemeEnd);
+    return "jdbc:postgresql://" + authority;
+  }
+
+  // Load the lshvector weights into the extension for this connection.
+  // Important: Must run before any operation on vectors
+  public void loadVectorWeights() throws SQLException {
+    try (Statement st = this.connection.createStatement();
+         ResultSet rs = st.executeQuery("SELECT lsh_load()")) {
+      while (rs.next()) {
+        // drain
+      }
+    }
+  }
+
+  // Build the LSH vector factory from the DB weight tables.
+  public LSHVectorFactory buildVectorFactory() throws SQLException {
+    WeightTable weightTable = new WeightTable();
+    IdfLookupTable idfLookupTable = new IdfLookupTable();
+    KeyValueTable keyValueTable = new KeyValueTable();
+    weightTable.setConnection(this.connection);
+    idfLookupTable.setConnection(this.connection);
+    keyValueTable.setConnection(this.connection);
+
+    WeightFactory weightFactory = new WeightFactory();
+    IDFLookup idfLookup = new IDFLookup();
+    weightTable.recoverWeights(weightFactory);
+    idfLookupTable.recoverIDFLookup(idfLookup);
+    int settings = Integer.parseInt(keyValueTable.getValue("settings"));
+
+    LSHVectorFactory factory = new WeightedLSHCosineVectorFactory();
+    factory.set(weightFactory, idfLookup, settings);
+    return factory;
+  }
+
+  public Integer getArchitectureId(String languageId) throws SQLException {
+    return this.getStringId("archtable", languageId);
+  }
+
+  private Integer getStringId(String table, String value) throws SQLException {
+    String sql = "SELECT id FROM " + table + " WHERE val = ?";
+    try (PreparedStatement pstmt = this.connection.prepareStatement(sql)) {
+      pstmt.setString(1, value);
+      try (ResultSet rs = pstmt.executeQuery()) {
+        if (rs.next()) {
+          return rs.getInt("id");
+        }
+      }
+    }
+    return null;
+  }
+
+  // Find potential function names sharing the given hash, restricted to the same architecture.
+  // When specificHash is non-null the match is "exact" (full + specific hash).
+  public List<FidbMatch> findFidbMatches(long fullHash, Long specificHash, int idArch)
+      throws SQLException {
+    String sql = "SELECT f.name AS function_name, pr.origin AS origin, pr.name AS project_name, pr.version AS version " +
+      "FROM fidb fb JOIN functions f ON f.id_fidb = fb.id JOIN program p ON p.id = f.id_program " +
+      "JOIN project_program pp ON pp.id_program = p.id JOIN project pr ON pr.id = pp.id_project " +
+      "WHERE fb.full_hash = ? AND p.id_arch = ?";
+    if (specificHash != null) {
+      sql += " AND fb.specific_hash = ?";
+    }
+    List<FidbMatch> matches = new ArrayList<>();
+    try (PreparedStatement pstmt = this.connection.prepareStatement(sql)) {
+      pstmt.setLong(1, fullHash);
+      pstmt.setInt(2, idArch);
+      if (specificHash != null) {
+        pstmt.setLong(3, specificHash);
+      }
+      try (ResultSet rs = pstmt.executeQuery()) {
+        while (rs.next()) {
+          matches.add(new FidbMatch(rs.getString("function_name"), rs.getString("origin"),
+            rs.getString("project_name"), rs.getString("version")));
+        }
+      }
+    }
+    return matches;
+  }
+
+  // Nearest-neighbour vector search (Mirrors PostgresFunctionDatabase's query).
+  public List<BsimMatch> queryNearest(String vectorSql, double similarity, double confidence, int max)
+      throws SQLException {
+    String sql =
+      "WITH const(cvec) AS (VALUES (lshvector_in(CAST(? AS cstring)))), " +
+      "comp AS (SELECT vt.id AS id, lshvector_compare(cvec, vt.vec) AS cfunc " +
+      "         FROM const, vectable vt WHERE cvec % vt.vec) " +
+      "SELECT f.name AS function_name, pr.origin AS origin, pr.name AS project_name, pr.version AS version, " +
+      "       (comp.cfunc).sim AS sim, (comp.cfunc).sig AS sig " +
+      "FROM comp " +
+      "JOIN functions f ON f.id_vector = comp.id " +
+      "JOIN program p ON p.id = f.id_program " +
+      "JOIN project_program pp ON pp.id_program = p.id " +
+      "JOIN project pr ON pr.id = pp.id_project " +
+      "WHERE (comp.cfunc).sim > ? AND (comp.cfunc).sig > ? " +
+      "ORDER BY (comp.cfunc).sim DESC LIMIT ?";
+    List<BsimMatch> matches = new ArrayList<>();
+    try (PreparedStatement pstmt = this.connection.prepareStatement(sql)) {
+      pstmt.setString(1, vectorSql);
+      pstmt.setDouble(2, similarity);
+      pstmt.setDouble(3, confidence);
+      pstmt.setInt(4, max);
+      try (ResultSet rs = pstmt.executeQuery()) {
+        while (rs.next()) {
+          matches.add(new BsimMatch(rs.getString("function_name"), rs.getString("origin"),
+            rs.getString("project_name"), rs.getString("version"),
+            rs.getDouble("sim"), rs.getDouble("sig")));
+        }
+      }
+    }
+    return matches;
+  }
+
+  public void close() {
+    try {
+      this.connection.close();
+    } catch (SQLException e) {
+      Msg.error(this, "Failed to close database connection", e);
+    }
+  }
+}
+
+class FidbMatch {
+  private String functionName;
+  private String origin;
+  private String projectName;
+  private String version;
+
+  public FidbMatch(String functionName, String origin, String projectName, String version) {
+    this.functionName = functionName;
+    this.origin = origin;
+    this.projectName = projectName;
+    this.version = version;
+  }
+
+  public String getFunctionName() { return functionName; }
+  public String getOrigin() { return origin; }
+  public String getProjectName() { return projectName; }
+  public String getVersion() { return version; }
+}
+
+class BsimMatch {
+  private String functionName;
+  private String origin;
+  private String projectName;
+  private String version;
+  private double similarity;
+  private double significance;
+
+  public BsimMatch(String functionName, String origin, String projectName, String version,
+      double similarity, double significance) {
+    this.functionName = functionName;
+    this.origin = origin;
+    this.projectName = projectName;
+    this.version = version;
+    this.similarity = similarity;
+    this.significance = significance;
+  }
+
+  public String getFunctionName() { return functionName; }
+  public String getOrigin() { return origin; }
+  public String getProjectName() { return projectName; }
+  public String getVersion() { return version; }
+  public double getSimilarity() { return similarity; }
+  public double getSignificance() { return significance; }
 }
 
 // --- Custom Loader -----------------------------------------------------------
@@ -608,7 +737,17 @@ public class SightHouseFrontendScript extends GhidraScript {
   // Analysis variables
   private static final String DECOMPILER_SWITCH_ANALYZER = "Decompiler Switch Analysis";
   private static final String AGGRESSIVE_INSTRUCTION_FINDER = "Aggressive Instruction Finder";
- 
+
+  // Match provenance.
+  private static final String MATCH_KIND_BSIM = "bsim";
+  private static final String MATCH_KIND_FIDB = "fidb";
+
+  // FIDB is "almost" a byte match, so we set it's score to arbitrary high similarity/confidence
+  // so it work out of the box with BobRoss algorithm.
+  private static final double FIDB_SIMILARITY = 1.0;
+  private static final double FIDB_EXACT_SIGNIFICANCE = 1000.0;
+  private static final double FIDB_FULL_SIGNIFICANCE = 100.0;
+
   private Program importWithCustomLoader(File file, SightHouseProgram sg, Language language, CompilerSpec compilerSpec) throws Exception {
 
     // Use this method instead of AutoImporter.importFresh as it rely on the ClassSearcher 
@@ -745,121 +884,198 @@ public class SightHouseFrontendScript extends GhidraScript {
     }
   }
 
-  private List<Function> filterFunctionOnInstructionCount(Program program, int min, int max) {
-    // Return a list of function to search for 
-    FunctionManager fman = program.getFunctionManager();
-    Listing listing = program.getListing();
+  private static List<Function> filterFunctionOnInstructionCount(Map<Function, Integer> counts, int min, int max) {
     List<Function> filtered = new ArrayList<>();
-    AddressSpace space = program.getAddressFactory().getDefaultAddressSpace();
-
-    // Since we did not define an entry point to the program, use the minimum address 
-    for (Function f: fman.getFunctions(space.getMinAddress(), true)) {
-      AddressSetView body = f.getBody();
-      InstructionIterator instructionIterator = listing.getInstructions(body, true);
-
-      // Count the number of instructions
-      int instructionCount = 0;
-      while (instructionIterator.hasNext()) {
-        Instruction instruction = instructionIterator.next();
-        instructionCount++;
-      }
-      // Filter by number of instruction inside the function
-      if (min <= instructionCount && (instructionCount <= max || max == 0)) {
-        filtered.add(f);
+    for (Map.Entry<Function, Integer> entry: counts.entrySet()) {
+      int instructionCount = entry.getValue();
+      if (min <= instructionCount && (instructionCount <= max || max <= 0)) {
+        filtered.add(entry.getKey());
       }
     }
-
-    return filtered; 
+    return filtered;
   }
 
-  private void searchBSimSignatures(SightHouseProgram newSg, Program program, SightHouseConfiguration config) throws Exception {
+  // Whether a function is external. Taken from
+  // ghidra.feature.fid.service.FidServiceLibraryIngest.
+  private static boolean functionIsExternal(Function function) {
+    Memory mem = function.getProgram().getMemory();
+    Address entryPoint = function.getEntryPoint();
+    if (function.isExternal() || !mem.contains(entryPoint)) {
+      return true;
+    }
+    MemoryBlock block = mem.getBlock(entryPoint);
+    return block == null || !block.isInitialized() || block.isExternalBlock();
+  }
+
+  // Serialize a match's provenance into the JSON string stored under the "executable" metadata key,
+  private static String buildExecutableJson(String origin, String name, String version) {
+    JsonObject executable = new JsonObject();
+    executable.addProperty("origin", origin);
+    JsonArray metadata = new JsonArray();
+    JsonArray entry = new JsonArray();
+    entry.add(name);
+    entry.add(version);
+    metadata.add(entry);
+    executable.add("metadata", metadata);
+    return executable.toString();
+  }
+
+  private void searchBSimSignatures(SightHouseProgram newSg, Program program,
+      Map<Function, Integer> instructionCounts, SightHouseConfiguration config) throws Exception {
     BsimConfiguration bsim = config.getBsim();
-    if (!bsim.isEnabled()) {
+    if (bsim == null) {
       println("BSIM is disabled, skipping search");
       return; // Abort
     }
-    int added = 0;
-    // First filter onces the functions to search for
-    List<Function> funcs = filterFunctionOnInstructionCount(program, bsim.getMinNumberOfInstructions(), bsim.getMaxNumberOfInstructions());
+    List<Function> funcs = filterFunctionOnInstructionCount(instructionCounts, bsim.getMinNumberOfInstructions(), bsim.getMaxNumberOfInstructions());
     println("Start searching for BSIM among " + funcs.size() + " functions");
-    // Nothing to signature: BSim generates no vectors, so the query's
-    // DescriptionManager would carry no settings and the server would reject it
-    // with "Query signature data has no setting information". Bail out cleanly
-    // (0 matches) instead of crashing. This happens when auto-analysis identifies
-    // no functions, or when they're all removed by the instruction-count filter.
     if (funcs.isEmpty()) {
       println("No functions to search for, skipping BSIM search");
       return;
     }
-    for (DatabaseConfiguration database: bsim.getDatabases()) {
-      // Derive BSIM url and connect to the database
-      ClientUtil.setClientAuthenticator(database.getAuthenticator());
-      BSimServerInfo serverInfo = new BSimServerInfo(BSimClientFactory.deriveBSimURL(database.getUrl()));
-      try (FunctionDatabase querydb = BSimClientFactory.buildClient(serverInfo, false)) {
-        if (!querydb.initialize()) {
-          throw new Exception(querydb.getLastError().message);
-        }
 
+    int added = 0;
+    for (DatabaseConfiguration database: config.getDatabases()) {
+      SightHouseDatabase db = null;
+      try {
+        db = new SightHouseDatabase(database.getUrl(), database.getUsername(), database.getPassword());
+        db.loadVectorWeights();
+
+        // Generate the query program's vectors.
+        Map<Long, String> vectorByOffset = new HashMap<Long, String>();
         GenSignatures gensig = new GenSignatures(false);
+        LSHVectorFactory factory = db.buildVectorFactory();
         try {
-          // Open program
-          gensig.setVectorFactory(querydb.getLSHVectorFactory());
+          gensig.setVectorFactory(factory);
           gensig.openProgram(program, null, null, null, null, null);
-
-          // Scan all the functions
-          DescriptionManager manager = gensig.getDescriptionManager();
           gensig.scanFunctions(funcs.iterator(), funcs.size(), monitor);
-
-          // Prepare query for the database
-          QueryNearest query = new QueryNearest();
-          query.manage = manager;
-          query.max = bsim.getMaxNumberOfMatches();
-          query.thresh = bsim.getSimilarity();
-          query.signifthresh = bsim.getConfidence();
-
-          // Send query and wait for response
-          ResponseNearest response = query.execute(querydb);
-          if (response == null) {
-            throw new Exception(querydb.getLastError().message);
-          }
-
-          // Iterate over results
-          Iterator<SimilarityResult> iter = response.result.iterator();
-          while (iter.hasNext()) {
-            SimilarityResult sim = iter.next();
-            FunctionDescription base = sim.getBase();
-            ExecutableRecord exe = base.getExecutableRecord();
-
-            // Get function section 
-            SightHouseFunction function = newSg.getFunctionByAddr(base.getAddress());
-
-            // Iterate over matches
-            Iterator<SimilarityNote> subiter = sim.iterator();
-            while (subiter.hasNext()) {
-              SimilarityNote note = subiter.next();
-              FunctionDescription fdesc = note.getFunctionDescription();
-              ExecutableRecord exerec = fdesc.getExecutableRecord();
-
-              // Create our metadata
-              Map<String, Object> metadata = new HashMap<String, Object>();
-              metadata.put("executable", exerec.getNameExec());
-              metadata.put("similarity", note.getSimilarity());
-              metadata.put("significance", note.getSignificance());
-
-              // Add a new matches
-              function.getMatches().add(new SightHouseMatch(
-                    0, fdesc.getFunctionName(), 0, metadata
-              ));
-              ++added;
+          DescriptionManager manager = gensig.getDescriptionManager();
+          Iterator<FunctionDescription> it = manager.listAllFunctions();
+          while (it.hasNext()) {
+            FunctionDescription fd = it.next();
+            SignatureRecord sigrec = fd.getSignatureRecord();
+            if (sigrec == null) {
+              continue;
             }
+            // Mirror Ghidra's queryNearestVector: skip any query
+            // vector whose self-significance is below the significance threshold.
+            LSHVector lshVector = sigrec.getLSHVector();
+            if (factory.getSelfSignificance(lshVector) < bsim.getConfidence()) {
+              continue;
+            }
+            vectorByOffset.put(fd.getAddress(), lshVector.saveSQL());
           }
         }
         finally {
           gensig.dispose();
         }
+
+        // Query each function's vector for nearest neighbours.
+        for (Map.Entry<Long, String> entry: vectorByOffset.entrySet()) {
+          SightHouseFunction function = newSg.getFunctionByAddr(entry.getKey());
+          if (function == null) {
+            continue;
+          }
+          List<BsimMatch> matches = db.queryNearest(
+              entry.getValue(), bsim.getSimilarity(), bsim.getConfidence(), bsim.getMaxNumberOfMatches());
+          for (BsimMatch match: matches) {
+            Map<String, Object> metadata = new HashMap<String, Object>();
+            metadata.put("executable", buildExecutableJson(match.getOrigin(), match.getProjectName(), match.getVersion()));
+            metadata.put("kind", MATCH_KIND_BSIM);
+            metadata.put("similarity", match.getSimilarity());
+            metadata.put("significance", match.getSignificance());
+            function.getMatches().add(new SightHouseMatch(0, match.getFunctionName(), 0, metadata));
+            ++added;
+          }
+        }
+      }
+      finally {
+        if (db != null) {
+          db.close();
+        }
       }
     }
     println("Found " + added + " potential BSIM matches");
+  }
+
+  private void searchFidbSignatures(SightHouseProgram newSg, Program program,
+      Map<Function, Integer> instructionCounts, SightHouseConfiguration config) throws Exception {
+    FidbConfiguration fidb = config.getFidb();
+    if (fidb == null) {
+      println("FIDB is disabled, skipping search");
+      return; // Abort
+    }
+    List<Function> funcs = filterFunctionOnInstructionCount(instructionCounts, fidb.getMinNumberOfInstructions(), fidb.getMaxNumberOfInstructions());
+    println("Start searching for FIDB among " + funcs.size() + " functions");
+    if (funcs.isEmpty()) {
+      println("No functions to search for, skipping FIDB search");
+      return;
+    }
+
+    String languageId = program.getLanguageID().getIdAsString();
+    FidService service = new FidService();
+    FidHasher hasher = service.getHasher(program);
+
+    int added = 0;
+    for (DatabaseConfiguration database: config.getDatabases()) {
+      SightHouseDatabase db = null;
+      try {
+        db = new SightHouseDatabase(database.getUrl(), database.getUsername(), database.getPassword());
+        // FID compares only within the same architecture (processor). If this DB does not know the
+        // target's architecture, it holds no compatible library, so skip it. 
+        Integer idArch = db.getArchitectureId(languageId);
+        if (idArch == null) {
+          println("FIDB: skipping " + database.getUrl() + " -- architecture '" + languageId +
+              "' unknown to this database (no compatible signatures)");
+          continue;
+        }
+
+        for (Function f: funcs) {
+          // Skip thunks and external functions as they have no real body to hash.
+          if (f.isThunk() || functionIsExternal(f)) {
+            continue;
+          }
+          FidHashQuad quad = null;
+          try {
+            quad = hasher.hash(f);
+          } catch (MemoryAccessException e) {
+            continue;
+          }
+          if (quad == null) {
+            continue;
+          }
+          SightHouseFunction function = newSg.getFunctionByAddr(f.getEntryPoint().getOffset());
+          if (function == null) {
+            continue;
+          }
+
+          // Prefer exact (full + specific) matches, fall back to full-hash matches.
+          String mode = "exact";
+          List<FidbMatch> matches = db.findFidbMatches(quad.getFullHash(), quad.getSpecificHash(), idArch);
+          if (matches.isEmpty()) {
+            mode = "full";
+            matches = db.findFidbMatches(quad.getFullHash(), null, idArch);
+          }
+          boolean exact = mode.equals("exact");
+          for (FidbMatch match: matches) {
+            Map<String, Object> metadata = new HashMap<String, Object>();
+            metadata.put("executable", buildExecutableJson(match.getOrigin(), match.getProjectName(), match.getVersion()));
+            metadata.put("kind", MATCH_KIND_FIDB);
+            metadata.put("mode", mode);
+            metadata.put("similarity", FIDB_SIMILARITY);
+            metadata.put("significance", exact ? FIDB_EXACT_SIGNIFICANCE : FIDB_FULL_SIGNIFICANCE);
+            function.getMatches().add(new SightHouseMatch(0, match.getFunctionName(), 0, metadata));
+            ++added;
+          }
+        }
+      }
+      finally {
+        if (db != null) {
+          db.close();
+        }
+      }
+    }
+    println("Found " + added + " potential FIDB matches");
   }
 
   private SightHouseProgram searchSignatures(Program program, SightHouseConfiguration config) throws Exception {
@@ -922,7 +1138,19 @@ public class SightHouseFrontendScript extends GhidraScript {
     }
 
     println("Search for similar functions");
-    searchBSimSignatures(newSg, program, config);
+    // Count instructions once per function.
+    Map<Function, Integer> instructionCounts = new LinkedHashMap<>();
+    for (Function f : fman.getFunctions(space.getMinAddress(), true)) {
+      InstructionIterator instructions = program.getListing().getInstructions(f.getBody(), true);
+      int instructionCount = 0;
+      while (instructions.hasNext()) {
+        instructions.next();
+        instructionCount++;
+      }
+      instructionCounts.put(f, instructionCount);
+    }
+    searchFidbSignatures(newSg, program, instructionCounts, config);
+    searchBSimSignatures(newSg, program, instructionCounts, config);
     return newSg;
   } 
 

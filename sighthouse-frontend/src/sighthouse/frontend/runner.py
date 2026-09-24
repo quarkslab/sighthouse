@@ -430,9 +430,9 @@ class Worker:
         # won't complain when connecting
         env = os.environ.copy()
         env["_JAVA_OPTIONS"] = ""
-        for bsim_config in config["bsim"]["databases"]:
-            if bsim_config["url"].startswith("postgresql://"):
-                env["_JAVA_OPTIONS"] = f"-Duser.name={bsim_config['user']} "
+        for url_config in config["databases"]:
+            if url_config["url"].startswith("postgresql://"):
+                env["_JAVA_OPTIONS"] = f"-Duser.name={url_config['user']} "
                 break
 
         # Add user.scripts.dir property in case there other scripts with the same name

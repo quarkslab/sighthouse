@@ -10,10 +10,10 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.PreparedStatement;
+import java.sql.Statement;
+import java.sql.Types;
 
-import java.io.File;
 import java.io.FileReader;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -25,74 +25,57 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Iterator;
-
-import java.net.URL;
-import java.net.MalformedURLException;
 
 // Ghidra imports
 import ghidra.app.script.GhidraScript;
 import ghidra.app.util.importer.MessageLog;
-import ghidra.app.decompiler.DecompileException;
 import ghidra.app.plugin.core.disassembler.EntryPointAnalyzer;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.listing.Listing;
-import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.InstructionIterator;
 import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.address.Address;
-import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.mem.MemoryAccessException;
-import ghidra.program.model.lang.Language;
-import ghidra.program.model.lang.LanguageID;
-import ghidra.program.model.lang.CompilerSpec;
-import ghidra.program.model.lang.CompilerSpecID;
 import ghidra.program.model.symbol.SourceType;
-import ghidra.framework.model.DomainFile;
-import ghidra.framework.protocol.ghidra.GhidraURL;
-import ghidra.util.exception.CancelledException;    
+import ghidra.util.exception.CancelledException;
 import ghidra.util.exception.DuplicateFileException;
 import ghidra.util.Msg;
 
-// BSIM imports 
+// BSIM signature generation
+import generic.lsh.vector.LSHVector;
 import generic.lsh.vector.LSHVectorFactory;
-import ghidra.features.bsim.query.BSimClientFactory;
-import ghidra.features.bsim.query.BSimServerInfo;
-import ghidra.features.bsim.query.BSimServerInfo.DBType;
-import ghidra.features.bsim.query.FunctionDatabase;
-import ghidra.features.bsim.query.FunctionDatabase.BSimError;
-import ghidra.features.bsim.query.FunctionDatabase.ErrorCategory;
-import ghidra.features.bsim.query.FunctionDatabase.Status;
+import generic.lsh.vector.WeightedLSHCosineVectorFactory;
+import generic.lsh.vector.WeightFactory;
+import generic.lsh.vector.IDFLookup;
 import ghidra.features.bsim.query.GenSignatures;
-import ghidra.features.bsim.query.LSHException;
-import ghidra.features.bsim.query.description.DatabaseInformation;
+import ghidra.features.bsim.query.client.tables.WeightTable;
+import ghidra.features.bsim.query.client.tables.IdfLookupTable;
+import ghidra.features.bsim.query.client.tables.KeyValueTable;
 import ghidra.features.bsim.query.description.DescriptionManager;
-import ghidra.features.bsim.query.protocol.InsertRequest;
-import ghidra.features.bsim.query.protocol.QueryExeCount;
-import ghidra.features.bsim.query.protocol.ResponseExe;
+import ghidra.features.bsim.query.description.FunctionDescription;
+import ghidra.features.bsim.query.description.SignatureRecord;
 
-// System for defining BSIM password to use for database connection
-import java.awt.Component;
-import java.net.Authenticator;
-import java.net.PasswordAuthentication;
-import javax.security.auth.callback.*;
-import ghidra.framework.remote.SSHSignatureCallback;
-import ghidra.framework.client.ClientAuthenticator;
-import ghidra.framework.client.ClientUtil;
-import ghidra.framework.remote.AnonymousCallback;
+// FIDB signature generation
+import ghidra.feature.fid.service.FidService;
+import ghidra.feature.fid.hash.FidHasher;
+import ghidra.feature.fid.hash.FidHashQuad;
+
+// Name demangling
+import ghidra.app.cmd.label.DemanglerCmd;
+import ghidra.app.util.demangler.DemanglerOptions;
 
 // JSON imports
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.google.gson.JsonArray;
 import java.lang.reflect.Modifier;
 
 // --- Configuration Stuff -----------------------------------------------------
@@ -100,127 +83,320 @@ import java.lang.reflect.Modifier;
 class SightHouseConfiguration {
   private String directory;
   private String metadata;
-  private String format;
-  private transient String filteredMetadata = null;
+  private List<DatabaseConfiguration> databases;
   private BsimConfiguration bsim;
   private FidbConfiguration fidb;
 
   // Getters and Setters
   public String getDirectory() { return directory; }
+  public List<DatabaseConfiguration> getDatabases() { return databases; }
   public BsimConfiguration getBsim() { return bsim; }
   public FidbConfiguration getFidb() { return fidb; }
-
-  public String getMetadata() throws Exception {
-    // Prepare metadata
-    if (this.filteredMetadata == null && this.metadata != null) {
-      JsonParser parser = new JsonParser();
-      JsonObject jsonMetadata = parser.parse(this.metadata).getAsJsonObject();
-
-      if (format.equals("simple")) {
-        JsonArray metadataArray = jsonMetadata.getAsJsonArray("metadata");
-        StringBuilder result = new StringBuilder();
-        for (int i = 0; i < metadataArray.size(); i++) {
-            JsonArray pair = metadataArray.get(i).getAsJsonArray();
-            result.append(pair.get(0).getAsString()).append("@")
-                  .append(pair.get(1).getAsString());
-            if (i < metadataArray.size() - 1) result.append(", ");
-        }
-        this.filteredMetadata = result.toString();
-
-      } else if (format.equals("json")) {
-        JsonObject filteredJsonMetadata = new JsonObject();
-        ArrayList<String> metadataTags = new ArrayList<String>();
-        metadataTags.add("origin");
-        metadataTags.add("metadata");
-        for (String key : metadataTags) {
-          if (jsonMetadata.has(key)) {
-            filteredJsonMetadata.add(key, jsonMetadata.get(key));
-          }
-        } 
-        if (filteredJsonMetadata.size() != 0) {
-          this.filteredMetadata = filteredJsonMetadata.toString();
-        }
-      } else {
-          throw new Exception("Invalid metadata format: '" + format + "'");
-      }
-    }
-    return this.filteredMetadata;
-  }
+  public String getRawMetadata() { return metadata; }
 }
 
 class BsimConfiguration {
   private int min_instructions = 10;    // Mininum number of instruction to filter function
-  private int max_instructions = 0;     // Maximum number of instruction to filter function (No maximum by default)
-  private List<DatabaseConfiguration> databases = null;
+  private int max_instructions = -1;    // Maximum number of instruction to filter function (No maximum by default)
 
   // Getters and Setters
   public int getMinNumberOfInstructions() { return min_instructions; }
   public int getMaxNumberOfInstructions() { return max_instructions; }
-  public List<DatabaseConfiguration> getDatabases() { return databases; }
 }
 
 class FidbConfiguration {
   private int min_instructions = 2;     // Mininum number of instruction to filter function
-  private int max_instructions = 0;     // Maximum number of instruction to filter function (No maximum by default)
-  private List<DatabaseConfiguration> databases = null;
+  private int max_instructions = -1;    // Maximum number of instruction to filter function (No maximum by default)
 
   // Getters and Setters
   public int getMinNumberOfInstructions() { return min_instructions; }
   public int getMaxNumberOfInstructions() { return max_instructions; }
-  public List<DatabaseConfiguration> getDatabases() { return databases; }
-}
-
-class SightHouseClientAuthenticator implements ClientAuthenticator {
-  private String userID = ClientUtil.getUserName(); // default username
-  private String password = null;
-  private Authenticator authenticator = new Authenticator() {
-    @Override
-    protected PasswordAuthentication getPasswordAuthentication() {
-      Msg.info(this, "PasswordAuthentication requested for " + getRequestingURL());
-      return new PasswordAuthentication(userID, password.toCharArray());
-    }
-  };
-
-  public void setCredentials(String newUsername, String newPassword) {
-    this.userID = newUsername;
-    this.password = newPassword;
-  }
-
-  public Authenticator getAuthenticator() {
-    return authenticator;
-  }
-
-  // Stub that need to be implemented but not used
-  public boolean processPasswordCallbacks(String title, String serverType, String serverName, boolean allowUserNameEntry,
-      NameCallback nameCb, PasswordCallback passCb, ChoiceCallback choiceCb,
-      AnonymousCallback anonymousCb, String loginError) {
-    return false;
-  }
-  public boolean promptForReconnect(Component parent, final String message) { return false; }
-  public char[] getNewPassword(Component parent, String serverInfo, String username) { return null; }
-  public char[] getKeyStorePassword(String keystorePath, boolean passwordError) { return null; }
-  public boolean isSSHKeyAvailable() { return false; }
-  public boolean processSSHSignatureCallbacks(String serverName, NameCallback nameCb, SSHSignatureCallback sshCb) { return false; }
 }
 
 class DatabaseConfiguration {
   private String url;
   private String username;
   private String password;
-  // This field dos not need to be serialized
-  private transient SightHouseClientAuthenticator authenticator = null;
 
   // Getters and Setters
   public String getUrl() { return url; }
   public String getUsername() { return username; }
   public String getPassword() { return password; }
-  public ClientAuthenticator getAuthenticator() {
-    // Create the authenticator if does not already exists
-    if (this.authenticator == null) {
-      this.authenticator = new SightHouseClientAuthenticator();
-      this.authenticator.setCredentials(this.username, this.password);
+}
+
+// --- SightHouse Database DAO -------------------------------------------------
+
+// JDBC controller for the SightHouse custom tables.
+class SightHouseDatabase {
+
+  private Connection connection;
+
+  public SightHouseDatabase(String url, String username, String password) throws SQLException {
+    this.connection = DriverManager.getConnection(toJdbcUrl(url), username, password);
+    this.connection.setAutoCommit(false);
+  }
+
+  // Turn a configuration url ("postgresql://user@host:5432/db") into a JDBC url.
+  private static String toJdbcUrl(String url) throws SQLException {
+    if (!url.startsWith("postgresql://") && !url.startsWith("postgres://")) {
+      throw new SQLException("Unsupported database url (expected postgresql://): " + url);
     }
-    return this.authenticator;
+    int schemeEnd = url.indexOf("://") + 3;
+    int at = url.indexOf('@', schemeEnd);
+    String authority = (at >= 0) ? url.substring(at + 1) : url.substring(schemeEnd);
+    return "jdbc:postgresql://" + authority;
+  }
+
+  // Load the lshvector weights into the extension for this connection.
+  // Important: Must run before any operation on vectors
+  public void loadVectorWeights() throws SQLException {
+    try (Statement st = this.connection.createStatement();
+         ResultSet rs = st.executeQuery("SELECT lsh_load()")) {
+      while (rs.next()) {
+        // drain
+      }
+    }
+  }
+
+  // Build the LSH vector factory from the DB weight tables.
+  public LSHVectorFactory buildVectorFactory() throws SQLException {
+    WeightTable weightTable = new WeightTable();
+    IdfLookupTable idfLookupTable = new IdfLookupTable();
+    KeyValueTable keyValueTable = new KeyValueTable();
+    weightTable.setConnection(this.connection);
+    idfLookupTable.setConnection(this.connection);
+    keyValueTable.setConnection(this.connection);
+
+    WeightFactory weightFactory = new WeightFactory();
+    IDFLookup idfLookup = new IDFLookup();
+    weightTable.recoverWeights(weightFactory);
+    idfLookupTable.recoverIDFLookup(idfLookup);
+    int settings = Integer.parseInt(keyValueTable.getValue("settings"));
+
+    LSHVectorFactory factory = new WeightedLSHCosineVectorFactory();
+    factory.set(weightFactory, idfLookup, settings);
+    return factory;
+  }
+
+  private int getOrInsertString(String table, String value) throws SQLException {
+    // Insert first, ignoring the row if another worker inserted it concurrently.
+    String insert = "INSERT INTO " + table + " (val) VALUES (?) ON CONFLICT (val) DO NOTHING RETURNING id";
+    try (PreparedStatement pstmt = this.connection.prepareStatement(insert)) {
+      pstmt.setString(1, value);
+      try (ResultSet rs = pstmt.executeQuery()) {
+        if (rs.next()) {
+          return rs.getInt("id");
+        }
+      }
+    }
+    // Already present: fetch its id.
+    // @NOTE: We have to select the whole DB because of the ON CONFLICT DO NOTHING clause in 
+    //        the above statement. Other options would be to use ON CONFLICT DO UPDATE but 
+    //        it can create "holes" in the identifiers.
+    String select = "SELECT id FROM " + table + " WHERE val = ?";
+    try (PreparedStatement pstmt = this.connection.prepareStatement(select)) {
+      pstmt.setString(1, value);
+      try (ResultSet rs = pstmt.executeQuery()) {
+        if (rs.next()) {
+          return rs.getInt("id");
+        }
+      }
+    }
+    throw new SQLException("Failed to insert or fetch value in " + table + ": " + value);
+  }
+
+  public long getOrInsertProject(String origin, String name, String version) throws SQLException {
+    if (origin == null || name == null || version == null) {
+      throw new IllegalArgumentException("project origin/name/version must not be null");
+    }
+    Long id = this.selectProjectId(origin, name, version);
+    if (id != null) {
+      return id;
+    }
+    // Not found: insert, ignoring the row if another worker inserted it concurrently.
+    String insert = "INSERT INTO project (origin, name, version) VALUES (?, ?, ?) " +
+      "ON CONFLICT (origin, name, version) DO NOTHING RETURNING id";
+    try (PreparedStatement pstmt = this.connection.prepareStatement(insert)) {
+      pstmt.setString(1, origin);
+      pstmt.setString(2, name);
+      pstmt.setString(3, version);
+      try (ResultSet rs = pstmt.executeQuery()) {
+        if (rs.next()) {
+          return rs.getLong("id");
+        }
+      }
+    }
+    // A concurrent insert won the race: fetch its id.
+    // @NOTE: We have to select the whole DB because of the ON CONFLICT DO NOTHING clause in 
+    //        the above statement. Other options would be to use ON CONFLICT DO UPDATE but 
+    //        it can create "holes" in the identifiers.
+    id = this.selectProjectId(origin, name, version);
+    if (id != null) {
+      return id;
+    }
+    throw new SQLException("Failed to insert or fetch project");
+  }
+
+  private Long selectProjectId(String origin, String name, String version) throws SQLException {
+    String select = "SELECT id FROM project WHERE origin = ? AND name = ? AND version = ?";
+    try (PreparedStatement pstmt = this.connection.prepareStatement(select)) {
+      pstmt.setString(1, origin);
+      pstmt.setString(2, name);
+      pstmt.setString(3, version);
+      try (ResultSet rs = pstmt.executeQuery()) {
+        if (rs.next()) {
+          return rs.getLong("id");
+        }
+      }
+    }
+    return null;
+  }
+
+  public Long getProgramIdByMd5(String md5) throws SQLException {
+    String sql = "SELECT id FROM program WHERE md5 = ?";
+    try (PreparedStatement pstmt = this.connection.prepareStatement(sql)) {
+      pstmt.setString(1, md5);
+      try (ResultSet rs = pstmt.executeQuery()) {
+        if (rs.next()) {
+          return rs.getLong("id");
+        }
+      }
+    }
+    return null;
+  }
+
+  public long insertProgram(String md5, String name, int idArch) throws SQLException {
+    String sql = "INSERT INTO program (md5, name, id_arch) VALUES (?, ?, ?) RETURNING id";
+    try (PreparedStatement pstmt = this.connection.prepareStatement(sql)) {
+      pstmt.setString(1, md5);
+      pstmt.setString(2, name);
+      pstmt.setInt(3, idArch);
+      try (ResultSet rs = pstmt.executeQuery()) {
+        if (rs.next()) {
+          return rs.getLong("id");
+        }
+      }
+    }
+    throw new SQLException("Failed to insert program");
+  }
+
+  public void linkProjectProgram(long idProject, long idProgram) throws SQLException {
+    String sql = "INSERT INTO project_program (id_project, id_program) VALUES (?, ?) ON CONFLICT DO NOTHING";
+    try (PreparedStatement pstmt = this.connection.prepareStatement(sql)) {
+      pstmt.setLong(1, idProject);
+      pstmt.setLong(2, idProgram);
+      pstmt.executeUpdate();
+    }
+  }
+
+  public long getOrInsertFidb(long fullHash, long specificHash,
+      int specificHashAdditionalSize, int codeUnitSize) throws SQLException {
+    String insert = "INSERT INTO fidb " +
+      "(full_hash, specific_hash, specific_hash_additional_size, code_unit_size) VALUES (?, ?, ?, ?) " +
+      "ON CONFLICT (full_hash, specific_hash, specific_hash_additional_size, code_unit_size) DO NOTHING RETURNING id";
+    try (PreparedStatement pstmt = this.connection.prepareStatement(insert)) {
+      pstmt.setLong(1, fullHash);
+      pstmt.setLong(2, specificHash);
+      pstmt.setInt(3, specificHashAdditionalSize);
+      pstmt.setInt(4, codeUnitSize);
+      try (ResultSet rs = pstmt.executeQuery()) {
+        if (rs.next()) {
+          return rs.getLong("id");
+        }
+      }
+    }
+    // Already present: fetch its id.
+    // @NOTE: We have to select the whole DB because of the ON CONFLICT DO NOTHING clause in 
+    //        the above statement. Other options would be to use ON CONFLICT DO UPDATE but 
+    //        it can create "holes" in the identifiers.
+    String select = "SELECT id FROM fidb WHERE full_hash = ? AND specific_hash = ? " +
+      "AND specific_hash_additional_size = ? AND code_unit_size = ?";
+    try (PreparedStatement pstmt = this.connection.prepareStatement(select)) {
+      pstmt.setLong(1, fullHash);
+      pstmt.setLong(2, specificHash);
+      pstmt.setInt(3, specificHashAdditionalSize);
+      pstmt.setInt(4, codeUnitSize);
+      try (ResultSet rs = pstmt.executeQuery()) {
+        if (rs.next()) {
+          return rs.getLong("id");
+        }
+      }
+    }
+    throw new SQLException("Failed to insert or fetch FID hash record");
+  }
+
+  public long insertVector(String vectorSql) throws SQLException {
+    String sql = "SELECT insert_vec(?::lshvector)";
+    try (PreparedStatement pstmt = this.connection.prepareStatement(sql)) {
+      pstmt.setString(1, vectorSql);
+      try (ResultSet rs = pstmt.executeQuery()) {
+        if (rs.next()) {
+          return rs.getLong(1);
+        }
+      }
+    }
+    throw new SQLException("insert_vec returned no id");
+  }
+
+  // Insert a function carrying at least one signature (id_vector and/or id_fidb may be null).
+  public long insertFunction(long idProgram, String name, Long idVector, Long idFidb) throws SQLException {
+    String sql = "INSERT INTO functions (id_program, name, id_vector, id_fidb) VALUES (?, ?, ?, ?) RETURNING id";
+    try (PreparedStatement pstmt = this.connection.prepareStatement(sql)) {
+      pstmt.setLong(1, idProgram);
+      pstmt.setString(2, name);
+      if (idVector != null) {
+        pstmt.setLong(3, idVector);
+      } else {
+        pstmt.setNull(3, Types.BIGINT);
+      }
+      if (idFidb != null) {
+        pstmt.setLong(4, idFidb);
+      } else {
+        pstmt.setNull(4, Types.BIGINT);
+      }
+      try (ResultSet rs = pstmt.executeQuery()) {
+        if (rs.next()) {
+          return rs.getLong("id");
+        }
+      }
+    }
+    throw new SQLException("Failed to insert function");
+  }
+
+  public void commit() throws SQLException {
+    this.connection.commit();
+  }
+
+  public void rollback() {
+    try {
+      this.connection.rollback();
+    } catch (SQLException e) {
+      Msg.error(this, "Failed to rollback transaction", e);
+    }
+  }
+
+  public void close() {
+    try {
+      this.connection.close();
+    } catch (SQLException e) {
+      Msg.error(this, "Failed to close database connection", e);
+    }
+  }
+}
+
+// Signatures collected for a single function during ingest. 
+// A function is only stored when it carries at a BSIM vector and/or a FIDB hash.
+class FunctionSignatures {
+  public String name;
+  public FidHashQuad fidHash = null;   // FIDB signature (nullable)
+  public String vectorSql = null;      // BSIM vector serialized with LSHVector.saveSQL() (nullable)
+
+  public FunctionSignatures(String name) {
+    this.name = name;
+  }
+
+  public boolean hasSignature() {
+    return this.fidHash != null || this.vectorSql != null;
   }
 }
 
@@ -230,31 +406,15 @@ public class SightHouseAnalyzerScript extends GhidraScript {
 
   private static final int EXIT_CODE_ERROR = 1;
 
-  private List<Function> filterFunctionOnInstructionCount(Program program, int min, int max) {
-    // Return a list of function to search for 
-    FunctionManager fman = program.getFunctionManager();
-    Listing listing = program.getListing();
+  private static List<Function> filterFunctionOnInstructionCount(Map<Function, Integer> counts, int min, int max) {
     List<Function> filtered = new ArrayList<>();
-    AddressSpace space = program.getAddressFactory().getDefaultAddressSpace();
-
-    // Since we did not define an entry point to the program, use the minimum address 
-    for (Function f: fman.getFunctions(space.getMinAddress(), true)) {
-      AddressSetView body = f.getBody();
-      InstructionIterator instructionIterator = listing.getInstructions(body, true);
-
-      // Count the number of instructions
-      int instructionCount = 0;
-      while (instructionIterator.hasNext()) {
-        Instruction instruction = instructionIterator.next();
-        instructionCount++;
-      }
-      // Filter by number of instruction inside the function
-      if (min <= instructionCount && (instructionCount <= max || max == 0)) {
-        filtered.add(f);
+    for (Map.Entry<Function, Integer> entry: counts.entrySet()) {
+      int instructionCount = entry.getValue();
+      if (min <= instructionCount && (instructionCount <= max || max <= 0)) {
+        filtered.add(entry.getKey());
       }
     }
-
-    return filtered; 
+    return filtered;
   }
 
   public boolean needAnalysis(String filePath) throws IOException {
@@ -291,116 +451,229 @@ public class SightHouseAnalyzerScript extends GhidraScript {
     return false;
   }
 
-  private void addProgramToBSimDatabase(Program prgm, SightHouseConfiguration config) throws Exception { // throws LSHException, IOException, MalformedURLException, DecompileException {
+
+  // Read a string field from a JSON object, returning "" when absent or null.
+  private static String jsonString(JsonObject obj, String key) {
+    if (obj.has(key) && !obj.get(key).isJsonNull()) {
+      return obj.get(key).getAsString();
+    }
+    return "";
+  }
+
+  // Ingest a program's BSIM + FIDB signatures into the SightHouse database.
+  private void addProgramToSightHouseDatabase(Program prgm, SightHouseConfiguration config) throws Exception {
     BsimConfiguration bsim = config.getBsim();
-    if (bsim == null) {
-      return; // Abort
+    FidbConfiguration fidb = config.getFidb();
+    if (bsim == null && fidb == null) {
+      return; // nothing to ingest
     }
-    // Get the metadata from the config
-    String metadata = config.getMetadata(); 
-    // First filter onces the functions to search for
-    List<Function> funcs = filterFunctionOnInstructionCount(prgm, bsim.getMinNumberOfInstructions(), bsim.getMaxNumberOfInstructions());
-    for (DatabaseConfiguration database: bsim.getDatabases()) {
-      // Derive BSIM url and connect to the database
-      ClientUtil.setClientAuthenticator(database.getAuthenticator());
-      // Decompilation is done only on symbols function and not function inside
-      FunctionDatabase querydb = null;
+
+    // Project identity from the raw job metadata.
+    String origin = "";
+    String name = "";
+    String version = "";
+    String rawMetadata = config.getRawMetadata();
+    if (rawMetadata != null) {
+      JsonObject meta = new JsonParser().parse(rawMetadata).getAsJsonObject();
+      origin = jsonString(meta, "origin");
+      name = jsonString(meta, "name");
+      version = jsonString(meta, "version");
+    }
+
+    // Program identity.
+    String md5 = prgm.getExecutableMD5();
+    String programName = prgm.getName();
+    String languageId = prgm.getLanguageID().getIdAsString();
+
+    // Count instructions once per function.
+    Map<Function, Integer> instructionCounts = new LinkedHashMap<>();
+    FunctionManager fman = prgm.getFunctionManager();
+    Listing listing = prgm.getListing();
+    AddressSpace space = prgm.getAddressFactory().getDefaultAddressSpace();
+    for (Function f : fman.getFunctions(space.getMinAddress(), true)) {
+      InstructionIterator instructions = listing.getInstructions(f.getBody(), true);
+      int instructionCount = 0;
+      while (instructions.hasNext()) {
+        instructions.next();
+        instructionCount++;
+      }
+      instructionCounts.put(f, instructionCount);
+    }
+
+    for (DatabaseConfiguration database : config.getDatabases()) {
+      SightHouseDatabase db = null;
       try {
-        Msg.info(this, String.format("Connecting to BSIM database: %s", database.getUrl()));
-        BSimServerInfo serverInfo = new BSimServerInfo(BSimClientFactory.deriveBSimURL(database.getUrl()));
-        querydb = BSimClientFactory.buildClient(serverInfo, false);
-        if (!querydb.initialize()) {
-          throw new IOException(querydb.getLastError().message);
+        Msg.info(this, String.format("Connecting to SightHouse database: %s", database.getUrl()));
+        db = new SightHouseDatabase(database.getUrl(), database.getUsername(), database.getPassword());
+        db.loadVectorWeights();
+
+        long projectId = db.getOrInsertProject(origin, name, version);
+
+        // Skip the whole binary if it is already ingested.
+        Long existing = db.getProgramIdByMd5(md5);
+        if (existing != null) {
+          db.linkProjectProgram(projectId, existing);
+          db.commit();
+          Msg.info(this, "Program already ingested, linked to project: " + programName);
+          continue;
         }
-        DatabaseInformation dbInfo = querydb.getInfo();
 
-        LSHVectorFactory vectorFactory = querydb.getLSHVectorFactory();
-        GenSignatures gensig = null;
-        try {
-          gensig = new GenSignatures(dbInfo.trackcallgraph);
-          gensig.setVectorFactory(vectorFactory);
-          gensig.addExecutableCategories(dbInfo.execats);
-          gensig.addFunctionTags(dbInfo.functionTags);
-          gensig.addDateColumnName(dbInfo.dateColumnName);
+        int idArch = db.getOrInsertString("archtable", languageId);
+        long programId = db.insertProgram(md5, programName, idArch);
+        db.linkProjectProgram(projectId, programId);
 
-          DomainFile dFile = prgm.getDomainFile();
-          URL fileURL = dFile.getSharedProjectURL(null);
-          if (fileURL == null) {
-            fileURL = dFile.getLocalProjectURL(null);
-          }
-          if (fileURL == null) {
-            Msg.info(this, "Cannot add signatures for prgm which has never been saved");
-            return;
-          }
-
-          String path = GhidraURL.getProjectPathname(fileURL);
-          // bsim adds the prgm name to the path so we need to remove the prgm name here
-          int lastSlash = path.lastIndexOf('/');
-          path = lastSlash == 0 ? "/" : path.substring(0, lastSlash);
-
-          URL normalizedProjectURL = GhidraURL.getProjectURL(fileURL);
-          String repo = normalizedProjectURL.toExternalForm();
-
-          gensig.openProgram(prgm, metadata, null, null, repo, path);
-          FunctionManager fman = prgm.getFunctionManager();
-
-          Listing listing = prgm.getListing();
-          List<Function> listbsimfuncs = filterFunctionOnInstructionCount(prgm, bsim.getMinNumberOfInstructions(), bsim.getMaxNumberOfInstructions());
-          gensig.scanFunctions(listbsimfuncs.iterator(), listbsimfuncs.size(), monitor);
-          DescriptionManager manager = gensig.getDescriptionManager();
-				  if (manager.numFunctions() == 0) {
-				  	Msg.warn(this, "Skipping Insert: " + 
-				  		prgm.getName() + " contains no functions with bodies");
-				  	return;
-				  }
-
-          // need to call sortCallGraph on each FunctionDescription
-          // this de-dupes the list of callees for each function
-          // without this there can be SQL errors due to inserting duplicate
-          // entries into the callgraph table
-          manager.listAllFunctions().forEachRemaining(fd -> fd.sortCallgraph());
-
-          InsertRequest insertreq = new InsertRequest();
-          insertreq.manage = manager;
-          if (insertreq.execute(querydb) == null) {
-            BSimError lastError = querydb.getLastError();
-            if ((lastError.category == ErrorCategory.Format) ||
-                (lastError.category == ErrorCategory.Nonfatal)) {
-              Msg.info(this, "Skipping Insert: " + prgm.getName() + ": " + lastError.message);
-              return;
-            }
-          }
-
-          StringBuffer status = new StringBuffer(prgm.getName());
-          status.append(" added to database ");
-          status.append(dbInfo.databasename);
-          status.append("\n\n");
-          QueryExeCount exeCount = new QueryExeCount();
-          ResponseExe countResponse = exeCount.execute(querydb);
-          if (countResponse != null) {
-            status.append(dbInfo.databasename);
-            status.append(" contains ");
-            status.append(countResponse.recordCount);
-            status.append(" executables.");
-          }
-          else {
-            status.append("null response from QueryExeCount");
-          }
-          Msg.info(this, status.toString());
+        // Collect BSIM + FIDB signatures per function.
+        Map<Address, FunctionSignatures> collected = new HashMap<>();
+        if (fidb != null) {
+          this.collectFidbSignatures(prgm, fidb, instructionCounts, collected);
         }
-        finally {
-          if (gensig != null) {
-            gensig.dispose();
-          }
+        if (bsim != null) {
+          this.collectBsimSignatures(prgm, bsim, db.buildVectorFactory(), instructionCounts, collected);
         }
-      }
-      finally {
-        if (querydb != null) {
-          querydb.close();
+
+        // Insert every function that carries at least one signature.
+        int inserted = 0;
+        for (FunctionSignatures fsig : collected.values()) {
+          if (!fsig.hasSignature()) {
+            continue;
+          }
+          Long idFidb = null;
+          if (fsig.fidHash != null) {
+            idFidb = db.getOrInsertFidb(fsig.fidHash.getFullHash(), fsig.fidHash.getSpecificHash(),
+              fsig.fidHash.getSpecificHashAdditionalSize(), fsig.fidHash.getCodeUnitSize());
+          }
+          Long idVector = null;
+          if (fsig.vectorSql != null) {
+            idVector = db.insertVector(fsig.vectorSql);
+          }
+          db.insertFunction(programId, fsig.name, idVector, idFidb);
+          inserted += 1;
+        }
+
+        db.commit();
+        Msg.info(this, String.format("%s: inserted %d function(s) into %s",
+          programName, inserted, database.getUrl()));
+      } catch (Exception e) {
+        if (db != null) {
+          db.rollback();
+        }
+        Msg.error(this, "Failed to ingest program into " + database.getUrl(), e);
+      } finally {
+        if (db != null) {
+          db.close();
         }
       }
     }
+  }
 
+  // Hash the FID-eligible functions and attach the hash quad to the collected signatures.
+  private void collectFidbSignatures(Program prgm, FidbConfiguration fidb,
+      Map<Function, Integer> instructionCounts, Map<Address, FunctionSignatures> collected) throws Exception {
+    List<Function> funcs = filterFunctionOnInstructionCount(instructionCounts,
+      fidb.getMinNumberOfInstructions(), fidb.getMaxNumberOfInstructions());
+    FidService service = new FidService();
+    FidHasher hasher = service.getHasher(prgm);
+    for (Function f : funcs) {
+      // Skip thunks, external functions and functions without a real (symbol) name.
+      if (f.isThunk() || functionIsExternal(f) || f.getSymbol().getSource() == SourceType.DEFAULT) {
+        continue;
+      }
+      FidHashQuad quad = null;
+      try {
+        quad = hasher.hash(f);
+      } catch (MemoryAccessException e) {
+        Msg.warn(this, "FIDB: failed to hash " + f.getName() + ": " + e.getMessage());
+      }
+      if (quad == null) {
+        continue;
+      }
+      getOrCreateSignatures(collected, f).fidHash = quad;
+    }
+  }
+
+  // Generate BSIM vectors for the filtered functions and attach them to the collected signatures.
+  private void collectBsimSignatures(Program prgm, BsimConfiguration bsim,
+      LSHVectorFactory vectorFactory, Map<Function, Integer> instructionCounts,
+      Map<Address, FunctionSignatures> collected) throws Exception {
+    List<Function> funcs = filterFunctionOnInstructionCount(instructionCounts,
+      bsim.getMinNumberOfInstructions(), bsim.getMaxNumberOfInstructions());
+    if (funcs.isEmpty()) {
+      return;
+    }
+    // GenSignatures only reports an address offset, so index the functions by it to map back.
+    Map<Long, Function> byOffset = new HashMap<>();
+    for (Function f : funcs) {
+      byOffset.put(f.getEntryPoint().getOffset(), f);
+    }
+
+    GenSignatures gensig = new GenSignatures(false); // no call graph
+    try {
+      gensig.setVectorFactory(vectorFactory);
+      gensig.openProgram(prgm, null, null, null, null, null);
+      gensig.scanFunctions(funcs.iterator(), funcs.size(), monitor);
+      DescriptionManager manager = gensig.getDescriptionManager();
+      Iterator<FunctionDescription> it = manager.listAllFunctions();
+      while (it.hasNext()) {
+        FunctionDescription fd = it.next();
+        SignatureRecord sigrec = fd.getSignatureRecord();
+        if (sigrec == null) {
+          continue;
+        }
+        Function f = byOffset.get(fd.getAddress());
+        if (f == null) {
+          continue;
+        }
+        LSHVector vec = sigrec.getLSHVector();
+        if (!(vectorFactory.getSelfSignificance(vec) > 0.0)) {
+          continue;
+        }
+        getOrCreateSignatures(collected, f).vectorSql = vec.saveSQL();
+      }
+    } finally {
+      gensig.dispose();
+    }
+  }
+
+  private static FunctionSignatures getOrCreateSignatures(
+      Map<Address, FunctionSignatures> collected, Function f) {
+    Address entry = f.getEntryPoint();
+    FunctionSignatures fsig = collected.get(entry);
+    if (fsig == null) {
+      fsig = new FunctionSignatures(f.getName());
+      collected.put(entry, fsig);
+    }
+    return fsig;
+  }
+
+  // Demangle every function name in place before signatures are collected.
+  private void demangleProgram(Program prgm) {
+    for (Function f : prgm.getFunctionManager().getFunctions(true)) {
+      String mangled = f.getName();
+      if (mangled == null) {
+        continue;
+      }
+      int transaction = prgm.startTransaction("Demangle");
+      try {
+        DemanglerCmd cmd = new DemanglerCmd(f.getEntryPoint(), mangled, new DemanglerOptions());
+        cmd.applyTo(prgm, monitor);
+      } catch (Exception e) {
+        // Demangling is best-effort; leave names that cannot be demangled untouched.
+      } finally {
+        prgm.endTransaction(transaction, true);
+      }
+    }
+  }
+
+  // Whether a function is external. Taken from
+  // ghidra.feature.fid.service.FidServiceLibraryIngest.
+  private static boolean functionIsExternal(Function function) {
+    Memory mem = function.getProgram().getMemory();
+    Address entryPoint = function.getEntryPoint();
+    if (function.isExternal() || !mem.contains(entryPoint)) {
+      return true;
+    }
+    MemoryBlock block = mem.getBlock(entryPoint);
+    return block == null || !block.isInitialized() || block.isExternalBlock();
   }
 
   private int decompileFunctions(Program prgm) {
@@ -453,10 +726,10 @@ public class SightHouseAnalyzerScript extends GhidraScript {
     // Open and analyze program
     this.openProgram(pr);
     this.decompileFunctions(pr);
-    // Add signature to the different databases/backends
-    this.addProgramToBSimDatabase(pr, config);
-    // @TODO: implement me 
-    // this.addProgramToFidbDatabase(pr, config);
+    // Demangle symbol names before collecting signatures
+    this.demangleProgram(pr);
+    // Add signatures (BSIM + FIDB) to the database
+    this.addProgramToSightHouseDatabase(pr, config);
 
     // https://github.com/NationalSecurityAgency/ghidra/issues/3570 possible memory leak inside ghidra
     for (Object consumer : pr.getConsumerList()) {

@@ -45,8 +45,7 @@ class RestApiTestBase(unittest.TestCase):
                 self.db,
                 "redis://localhost:6379/0",
                 Path("/nonexistent/ghidra"),
-                bsims=[],
-                fidbs=[],
+                urls=[],
                 logger=logging.getLogger("test_restapi"),
             )
         self.client = self.api._FrontendRestAPI__app.test_client()

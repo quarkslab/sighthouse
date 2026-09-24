@@ -62,21 +62,19 @@ class GhidraAnalyzer(Analyzer):
 
         The configuration is expected to follow this structure:
             args:
+              format: simple
+              urls:
+                - postgresql://user@bsim_postgres:5432/bsim
               bsim:
-                urls:
-                  - postgresql://user@bsim_postgres:5432/bsim
-                format: simple
                 min_instructions: 10
               fidb:
-                urls:
-                  - postgresql://user@fidb_postgres:5433/fidb
                 min_instructions: 2
         """
         if not isinstance(args, dict):
             raise ValueError("'args' must be a dictionary.")
 
         # Allowed top-level keys inside args
-        allowed_top_keys = {"format", "bsim", "fidb"}
+        allowed_top_keys = {"format", "urls", "bsim", "fidb"}
         unknown_keys = set(args.keys()) - allowed_top_keys
         if unknown_keys:
             raise ValueError(
@@ -91,7 +89,17 @@ class GhidraAnalyzer(Analyzer):
 
         parsed_args: Dict[str, Any] = {"format": fmt}
 
-        # Iterate over sub-sections (bsim, fidb)
+        # List of database URLs used by every signature backend
+        urls = args.get("urls")
+        if (
+            not urls
+            or not isinstance(urls, list)
+            or not all(isinstance(u, str) for u in urls)
+        ):
+            raise ValueError("The 'urls' field must be a non-empty list of strings.")
+        parsed_args["urls"] = self.parse_urls(urls)
+
+        # Iterate over sub-sections (bsim, fidb); each only carries instruction filters
         for system_name in ["bsim", "fidb"]:
             if system_name not in args:
                 continue
@@ -100,7 +108,7 @@ class GhidraAnalyzer(Analyzer):
             if not isinstance(system_cfg, dict):
                 raise ValueError(f"'{system_name}' must be a dictionary.")
 
-            allowed_fields = {"urls", "min_instructions", "max_instructions"}
+            allowed_fields = {"min_instructions", "max_instructions"}
             unknown_fields = set(system_cfg.keys()) - allowed_fields
             if unknown_fields:
                 raise ValueError(
@@ -108,18 +116,7 @@ class GhidraAnalyzer(Analyzer):
                     f"Allowed keys are: {', '.join(sorted(allowed_fields))}."
                 )
 
-            urls = system_cfg.get("urls")
-            if (
-                not urls
-                or not isinstance(urls, list)
-                or not all(isinstance(u, str) for u in urls)
-            ):
-                raise ValueError(
-                    f"The 'urls' field for '{system_name}' must be a non-empty list of strings."
-                )
-
-            entry: Dict[str, Any] = {"urls": self.parse_urls(urls)}
-
+            entry: Dict[str, Any] = {}
             for field in ["min_instructions", "max_instructions"]:
                 value = system_cfg.get(field)
                 if value is not None:
@@ -160,11 +157,11 @@ class GhidraAnalyzer(Analyzer):
             if not extract_tar(req, tmpdir):
                 raise Exception("Could not extract tar file")
 
-            # Override username java properties so bsim client
-            # won't complain when connecting
+            # Override username java properties so Ghidra
+            # won't complain about the current user when connecting
             my_env = environ.copy()
             my_env["_JAVA_OPTIONS"] = ""
-            for url in args.get("bsim", {}).get("urls", []):
+            for url in args.get("urls", []):
                 if url["type"] in ["postgres", "postgresql"] and isinstance(
                     url.get("user"), str
                 ):
@@ -181,24 +178,20 @@ class GhidraAnalyzer(Analyzer):
                 # metadata is an optional argument to retrieve more information about the functions identifies
                 "metadata": json.dumps(job.job_data),
                 "format": args["format"],
+                # List of databases for every signature backend
+                "databases": [
+                    {
+                        "url": e["url"],
+                        "username": e.get("user", ""),
+                        "password": e.get("password", ""),
+                    }
+                    for e in args["urls"]
+                ],
             }
-            # Add BSIM/FIDB configuration if defined
+            # Add BSIM/FIDB instruction filters if defined
             for backend in ["fidb", "bsim"]:
                 backend_config = args.get(backend)
                 if backend_config is not None:
-                    backend_config.update(
-                        {
-                            "databases": [
-                                {
-                                    "url": e["url"],
-                                    "username": e.get("user", ""),
-                                    "password": e.get("password", ""),
-                                }
-                                for e in backend_config["urls"]
-                            ]
-                        }
-                    )
-                    del backend_config["urls"]
                     config.update({backend: backend_config})
 
             config_file = tmpdir / "config.json"

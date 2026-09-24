@@ -63,8 +63,6 @@ services:
       POSTGRES_DB: frontend 
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password 
-    #ports:
-    #  - "5432:5432"
     volumes:
       - ./data/frontend:/var/lib/postgresql/data
     restart: unless-stopped
@@ -93,7 +91,7 @@ services:
     image: ${BASE_URL}/sighthouse-frontend:${VERSION}
     hostname: sighthouse_frontend
     restart: unless-stopped
-    command: 'frontend -g /ghidra -d postgresql://user:password@frontend_postgres:5432/frontend -r s3://admin:password@rustfs:9000/frontend start -w redis://redis:6379/0 -b postgresql://user@bsim_postgres:5432/bsim --worker 4'
+    command: 'frontend -g /ghidra -d postgresql://user:password@frontend_postgres:5432/frontend -r s3://admin:password@rustfs:9000/frontend start -w redis://redis:6379/0 -u postgresql://user@bsim_postgres:5432/bsim --worker 4'
     healthcheck:
       test: ["CMD-SHELL", "curl http://localhost:6671/api/v1/ping || exit 1 "]
       retries: "5"
