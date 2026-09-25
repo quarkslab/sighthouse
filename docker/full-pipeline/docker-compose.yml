@@ -19,10 +19,11 @@ services:
       - RUSTFS_ADDRESS=:9000
       - RUSTFS_CONSOLE_ADDRESS=:9001
     volumes:
-      - ./data/rustfs:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+      - ./data/rustfs/data:/data:z
+      - ./data/rustfs/logs:/logs:z
+    #ports:
+    #  - "9000:9000"
+    #  - "9001:9001"
 
   createbuckets:
     image: rustfs/rc:latest

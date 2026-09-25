@@ -14,7 +14,9 @@ CRT_PATH="nginx/certs/server.crt"
 
 mkdir -p "$SCRIPT_DIR/data/frontend"
 mkdir -p "$SCRIPT_DIR/data/redis"
-mkdir -p "$SCRIPT_DIR/data/rustfs"
+mkdir -p "$SCRIPT_DIR/data/rustfs/data/.rustfs.sys/tmp"
+mkdir -p "$SCRIPT_DIR/data/rustfs/data/.rustfs.sys/tmp-old"
+mkdir -p "$SCRIPT_DIR/data/rustfs/logs"
 
 # Copy pipeline database if one exist
 if [ -d "$PIPELINE_DB" ]; then

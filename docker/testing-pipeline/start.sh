@@ -9,7 +9,9 @@ set +a
 
 mkdir -p "$SCRIPT_DIR/data/postgres"
 mkdir -p "$SCRIPT_DIR/data/redis"
-mkdir -p "$SCRIPT_DIR/data/rustfs"
+mkdir -p "$SCRIPT_DIR/data/rustfs/data/.rustfs.sys/tmp"
+mkdir -p "$SCRIPT_DIR/data/rustfs/data/.rustfs.sys/tmp-old"
+mkdir -p "$SCRIPT_DIR/data/rustfs/logs"
 mkdir -p "$SCRIPT_DIR/data/scrapper"
 cp "$SCRIPT_DIR/pipeline.yml" "$SCRIPT_DIR/data/pipeline.yml"
 

@@ -12,9 +12,9 @@ services:
     image: rustfs/rustfs:latest
     hostname: rustfs
     user: "1000:1000"
-    #ports:
-    #  - "9000:9000"
-    #  - "9001:9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     environment:
       - RUSTFS_ACCESS_KEY=admin
       - RUSTFS_SECRET_KEY=password
@@ -22,7 +22,8 @@ services:
       - RUSTFS_ADDRESS=:9000
       - RUSTFS_CONSOLE_ADDRESS=:9001
     volumes:
-      - ./data/rustfs:/data
+      - ./data/rustfs/data:/data:z
+      - ./data/rustfs/logs:/logs:z
     networks:
       - internal-net
       - external-net
