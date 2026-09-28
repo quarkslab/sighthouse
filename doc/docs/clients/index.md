@@ -10,4 +10,4 @@ and reducing code duplication. Pick your tool below to get started:
 - [Binary Ninja](binja.md)
 - [Ghidra](ghidra.md)
 - [IDA Pro](ida.md)
-- [Web Client](webclient.md)
+- [Web Client](web.md)

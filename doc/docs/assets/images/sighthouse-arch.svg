@@ -1381,7 +1381,7 @@
            data-cell-id="i1LnOK-CGIMpS8EUPSdg-52"
            id="g137">
           <a
-             xlink:href="signature-pipeline/quickstart/"
+             xlink:href="../signature-pipeline/quickstart/"
              id="a136">
             <g
                id="g136">
@@ -1403,7 +1403,7 @@
            data-cell-id="i1LnOK-CGIMpS8EUPSdg-53"
            id="g139">
           <a
-             xlink:href="frontend/quickstart/"
+             xlink:href="../frontend/quickstart/"
              id="a138">
             <g
                id="g138">
@@ -1441,7 +1441,7 @@
         </g>
         <a
            id="a3"
-           xlink:href="clients/ghidra">
+           xlink:href="../clients/ghidra/">
           <g
              data-cell-id="i1LnOK-CGIMpS8EUPSdg-1"
              id="g17">
@@ -1460,7 +1460,7 @@
         </a>
         <a
            id="a1"
-           xlink:href="clients/ida">
+           xlink:href="../clients/ida/">
           <g
              data-cell-id="i1LnOK-CGIMpS8EUPSdg-2"
              id="g22">
@@ -1479,7 +1479,7 @@
         </a>
         <a
            id="a2"
-           xlink:href="clients/binja">
+           xlink:href="../clients/binja/">
           <g
              data-cell-id="i1LnOK-CGIMpS8EUPSdg-3"
              id="g27">

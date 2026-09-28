@@ -86,22 +86,27 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - SRE Clients:
-    - Binary Ninja: clients/binja.md
-    - Ghidra: clients/ghidra.md
-    - IDA: clients/ida.md
-    - Web Client: clients/web.md
-  - Frontend:
-    - Installation: frontend/installation.md
-    - Quickstart: frontend/quickstart.md 
-  - Signature Pipeline:
-    - Installation: signature-pipeline/installation.md
-    - Quickstart: signature-pipeline/quickstart.md 
-    - How It Works: signature-pipeline/how.md
+  - User Guide:
+    - SRE Clients:
+      - clients/index.md
+      - Binary Ninja: clients/binja.md
+      - Ghidra: clients/ghidra.md
+      - IDA: clients/ida.md
+      - Web Client: clients/web.md
+    - Frontend:
+      - Installation: frontend/installation.md
+      - Quickstart: frontend/quickstart.md
+    - Signature Pipeline:
+      - Installation: signature-pipeline/installation.md
+      - Quickstart: signature-pipeline/quickstart.md
+    - FAQ: faq.md
+  - For Developers:
+    - Architecture: architecture.md
+    - How It Works (BSIM): signature-pipeline/how.md
     - Custom modules: signature-pipeline/dev.md
-  - API Reference:
-    - Index: api-reference/index.md
-    - Core: api-reference/core.md
-    - Client: api-reference/client.md
-    - Frontend: api-reference/frontend.md
-    - Pipeline: api-reference/pipeline.md
+    - API Reference:
+      - Index: api-reference/index.md
+      - Core: api-reference/core.md
+      - Client: api-reference/client.md
+      - Frontend: api-reference/frontend.md
+      - Pipeline: api-reference/pipeline.md

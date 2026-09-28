@@ -8,7 +8,16 @@ collection for function extraction, SightHouse automatically scrapes, compiles, 
 new projects. This process allows us to continuously enhance and expand the database with new
 signatures.
 
-<video autoplay muted>
+The project is divided into three parts:
+
+- **Signature Pipeline**: Automatically feeds the signature database with new projects by
+  scraping, compiling, and analyzing them.
+- **Frontend**: A server that allows users to query signatures from the database produced by
+  the signature pipeline.
+- **SRE Clients**: Plugins tailored for each Software Reverse Engineering tool that interact
+  with the frontend. We currently support IDA, Ghidra, Binary Ninja, and a Web client.
+
+<video autoplay muted controls>
   <source src="assets/images/demo-pwn2own.mp4" type="video/mp4"/>
 </video>
 
@@ -23,63 +32,28 @@ need to know what you want to install before proceeding. This mindchart should g
   <figcaption>SightHouse Mindchart</figcaption>
 </figure>
 
-- If you want to search for signatures inside you program, go [here](clients/quickstart/) (plugin not installed yet? see [installation](clients/installation/)).
-- If you have an **existing** database and want to host your own SightHouse server, go [here](frontend/quickstart/).
-- You want to create your own database and/or your own signatures, go [here](signature-pipeline/quickstart/).
+- If you want to search for signatures inside your program as a **SRE Client**, go [here](clients/index.md) and pick your tool (installation instructions are on each tool's page).
+- If you have an **existing** database and want to host your own SightHouse server (**Frontend**), go [here](frontend/quickstart.md).
+- You want to create your own database and/or your own signatures (**Signature Pipeline**), go [here](signature-pipeline/quickstart.md).
+
+Not sure yet, or want to see if this fits your use case first? Check the [FAQ](faq.md).
 
 In case of doubt, do not hesitate to contact the developers :) 
 
-## SightHouse Architecture
+## Try it now
 
-SightHouse is designed to provide a streamlined and automated workflow for firmware or program 
-analysis, enabling function identification and framework origin tracing. The process follows a 
-modular pipeline that integrates scraping, compilation, signature extraction, and user analysis
-in a cohesive flow.
+Already have a SightHouse Frontend running (yours or your team's)? Install the client for your
+tool and start querying right away:
 
-Each step in the workflow is optimized for scalability and adaptability
-to handle various project types and analysis needs. Below is an overview
-of the key stages in the SightHouse workflow:
+- [Ghidra](clients/ghidra.md)
+- [IDA](clients/ida.md)
+- [Binary Ninja](clients/binja.md)
+- [Web](clients/web.md)
 
-- **Scraping**: Open-source SDK projects are collected from platforms
-like PlatformIO, with their metadata stored in structured entities (Package and PackageVersion). 
-Scraper can also directly add compiled projects to be analyzed, for example, we could create a
-scraper for Linux packages.
+Don't have one yet? There is no public SightHouse instance: you'll need to build a signature
+database with the [Signature Pipeline](signature-pipeline/quickstart.md) and serve it with the
+[Frontend](frontend/quickstart.md) first.
 
-- **Compilation**: The collected source code is dispatched to worker
-compilers for building executables files, ensuring compatibility with
-various build systems like PlatformIO, CMake, and AutoTools.
-
-- **Signature Extraction**: The backend processes compiled files, extracting function 
-signatures and storing them in a robust database for future analysis.
-
-- **Frontend Analysis**: The standalone frontend matches programs ranging from Windows PE to raw 
-bare-metal firmware binaries using the extracted signatures in the database, providing users 
-with detailed function mapping, renaming, and prototypes insights.
-
-By dividing the workflow into specialized, interconnected components, SightHouse achieves a 
-balance of flexibility, efficiency, and extensibility, ensuring that each stage performs its 
-role independently while contributing to the overall analysis process. The overall architecture
-of SightHouse is shown below.
-
-<figure markdown="span">
-  ![SightHouse Architecture](assets/images/sighthouse-arch.svg)
-  <figcaption>SightHouse Architecture</figcaption>
-</figure>
-
-*The diagram is clickable*
-
-we share with you some dockers to deploy your own pipeline or frontend or if you want to have a ghidra headless:
-
-```
-docker pull ghcr.io/quarkslab/sighthouse/sighthouse:latest
-docker pull ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:latest
-docker pull ghcr.io/quarkslab/sighthouse/sighthouse-frontend:latest
-
-docker pull ghcr.io/quarkslab/sighthouse/elastic_bsim:latest
-docker pull ghcr.io/quarkslab/sighthouse/ghidra-bsim-postgres:latest
-docker pull ghcr.io/quarkslab/sighthouse/create_bsim_db:latest
-
-docker pull ghcr.io/quarkslab/sighthouse/ghidraheadless:latest
-docker pull ghcr.io/quarkslab/sighthouse/ghidraheadless-python3:latest
-```
+Want to know how the pipeline, frontend, and clients fit together internally? See the
+[Architecture](architecture.md) page.
 
