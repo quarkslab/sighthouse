@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" data-bs-theme="dark">
   <head>
     <!--
@@ -8,7 +8,7 @@
       | rest of the code was written by humans. If this is a problem for you, |
       | feel free to use one of the other clients, or you are more than       |
       | welcome to propose a PR :)                                            |
-      +-----------------------------------------------------------------------+ 
+      +-----------------------------------------------------------------------+
     -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -22,26 +22,60 @@
          Login view
          =================================================================== -->
     <div id="login-view" class="d-none">
-      <div class="min-vh-100 d-flex align-items-center justify-content-center p-3">
+      <div
+        class="min-vh-100 d-flex align-items-center justify-content-center p-3"
+      >
         <div class="card shadow" style="width: 100%; max-width: 380px">
           <div class="card-body p-4">
             <div class="text-center mb-4">
-              <img src="/assets/logo.png" alt="SightHouse logo" width="128" height="128" class="mb-2" />
+              <img
+                src="/assets/logo.png"
+                alt="SightHouse logo"
+                width="128"
+                height="128"
+                class="mb-2"
+              />
               <div class="fs-6 fw-semibold">Sight<b>House</b></div>
-              <p class="text-body-secondary mt-2 mb-0">Sign in to browse and analyze programs.</p>
+              <p class="text-body-secondary mt-2 mb-0">
+                Sign in to browse and analyze programs.
+              </p>
             </div>
 
             <form id="login-form" novalidate>
-              <div id="login-error" class="alert alert-danger d-none" role="alert"></div>
+              <div
+                id="login-error"
+                class="alert alert-danger d-none"
+                role="alert"
+              ></div>
               <div class="mb-3">
                 <label class="form-label" for="login-user">Username</label>
-                <input id="login-user" class="form-control" type="text" autocomplete="username" placeholder="username" required />
+                <input
+                  id="login-user"
+                  class="form-control"
+                  type="text"
+                  autocomplete="username"
+                  placeholder="username"
+                  required
+                />
               </div>
               <div class="mb-3">
                 <label class="form-label" for="login-password">Password</label>
-                <input id="login-password" class="form-control" type="password" autocomplete="current-password" placeholder="********" required />
+                <input
+                  id="login-password"
+                  class="form-control"
+                  type="password"
+                  autocomplete="current-password"
+                  placeholder="********"
+                  required
+                />
               </div>
-              <button id="login-submit" class="btn btn-primary w-100" type="submit">Sign in</button>
+              <button
+                id="login-submit"
+                class="btn btn-primary w-100"
+                type="submit"
+              >
+                Sign in
+              </button>
             </form>
           </div>
         </div>
@@ -54,31 +88,78 @@
     <div id="app-view" class="d-none">
       <nav class="navbar bg-body-tertiary border-bottom px-3">
         <span class="navbar-brand d-flex align-items-center gap-2 mb-0 fs-6">
-          <img src="/assets/logo.png" alt="SightHouse logo" width="26" height="26" />
+          <img
+            src="/assets/logo.png"
+            alt="SightHouse logo"
+            width="26"
+            height="26"
+          />
           <span>Sight<b>House</b></span>
         </span>
         <div class="d-flex gap-2">
-          <button id="upload-open" class="btn btn-primary btn-sm d-flex align-items-center gap-1 fs-6" type="button">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <a
+            id="admin-link"
+            href="/admin"
+            role="button"
+            class="btn btn-outline-secondary btn-sm d-none fs-6"
+            >Admin</a
+          >
+          <button
+            id="upload-open"
+            class="btn btn-primary btn-sm d-flex align-items-center gap-1 fs-6"
+            type="button"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
             Upload program
           </button>
-          <button id="logout-btn" class="btn btn-outline-secondary btn-sm fs-6" type="button">Sign out</button>
+          <button
+            id="logout-btn"
+            class="btn btn-outline-secondary btn-sm fs-6"
+            type="button"
+          >
+            Sign out
+          </button>
         </div>
       </nav>
 
       <div class="workspace">
         <aside class="sidebar border-end">
-          <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom">
-            <span class="text-uppercase fw-semibold text-body-secondary">Programs</span>
-            <span id="program-count" class="badge rounded-pill text-bg-secondary fs-6">0</span>
+          <div
+            class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom"
+          >
+            <span class="text-uppercase fw-semibold text-body-secondary"
+              >Programs</span
+            >
+            <span
+              id="program-count"
+              class="badge rounded-pill text-bg-secondary fs-6"
+              >0</span
+            >
           </div>
           <div id="program-list" class="list-group list-group-flush"></div>
-          <footer class="border-top text-center text-body-secondary px-3 py-2 small">
+          <footer
+            class="border-top text-center text-body-secondary px-3 py-2 small"
+          >
             Got any issue? Report it
-            <a href="https://github.com/quarkslab/sighthouse/issues" target="_blank" rel="noopener noreferrer">here</a>.
+            <a
+              href="https://github.com/quarkslab/sighthouse/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              >here</a
+            >.
           </footer>
         </aside>
 
@@ -91,83 +172,195 @@
     <!-- ===================================================================
          Upload modal (Bootstrap)
          =================================================================== -->
-    <div class="modal fade" id="upload-modal" tabindex="-1" aria-labelledby="upload-title" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div
+      class="modal fade"
+      id="upload-modal"
+      tabindex="-1"
+      aria-labelledby="upload-title"
+      aria-hidden="true"
+    >
+      <div
+        class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"
+      >
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title fs-6" id="upload-title">Upload program</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
           </div>
 
           <form id="upload-form">
             <div class="modal-body">
-              <div id="upload-error" class="alert alert-danger d-none" role="alert"></div>
+              <div
+                id="upload-error"
+                class="alert alert-danger d-none"
+                role="alert"
+              ></div>
 
               <div class="mb-3">
                 <label class="form-label" for="upload-name">Program name</label>
-                <input id="upload-name" class="form-control" type="text" placeholder="e.g. libcurl.so" required />
+                <input
+                  id="upload-name"
+                  class="form-control"
+                  type="text"
+                  placeholder="e.g. libcurl.so"
+                  required
+                />
               </div>
 
               <div class="mb-3">
                 <label class="form-label" for="upload-file">Binary file</label>
-                <input id="upload-file" class="form-control" type="file" required />
+                <input
+                  id="upload-file"
+                  class="form-control"
+                  type="file"
+                  required
+                />
               </div>
 
-              <button id="autodetect-btn" class="btn btn-outline-secondary w-100 mb-2 d-flex align-items-center justify-content-center gap-2" type="button">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+              <button
+                id="autodetect-btn"
+                class="btn btn-outline-secondary w-100 mb-2 d-flex align-items-center justify-content-center gap-2"
+                type="button"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
                 Auto-detect language &amp; layout
               </button>
 
               <div class="mb-3">
                 <label class="form-label" for="upload-language">Language</label>
                 <select id="upload-language" class="form-select" required>
-                  <option value="" disabled selected>Loading languages...</option>
+                  <option value="" disabled selected>
+                    Loading languages...
+                  </option>
                 </select>
               </div>
 
               <label class="form-label">Memory layout</label>
               <p class="text-body-secondary">
-                How the binary maps into memory, or fill it with Auto-detect above.
-                Use <code>-1</code> as the file offset for uninitialized (BSS)
-                sections. Values accept <code>0x</code> hex or decimal.
+                How the binary maps into memory, or fill it with Auto-detect
+                above. Use <code>-1</code> as the file offset for uninitialized
+                (BSS) sections. Values accept <code>0x</code> hex or decimal.
               </p>
               <div id="upload-sections"></div>
 
               <label class="form-label d-block mt-3">Options</label>
               <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="opt-force" />
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="opt-force"
+                />
                 <label class="form-check-label" for="opt-force">
                   Force submission
-                  <span class="d-block text-body-secondary">Replace an existing program with the same name and re-analyze from scratch.</span>
+                  <span class="d-block text-body-secondary"
+                    >Replace an existing program with the same name and
+                    re-analyze from scratch.</span
+                  >
                 </label>
               </div>
               <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="opt-bobross" />
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="opt-bobross"
+                />
                 <label class="form-check-label" for="opt-bobross">
                   Bob Ross
-                  <span class="d-block text-body-secondary">Run the post-analysis metadata refinement pass.</span>
+                  <span class="d-block text-body-secondary"
+                    >Run the post-analysis metadata refinement pass.</span
+                  >
                 </label>
               </div>
               <div class="form-check">
                 <input class="form-check-input" type="checkbox" id="opt-auto" />
                 <label class="form-check-label" for="opt-auto">
                   Auto analysis
-                  <span class="d-block text-body-secondary">Enable Ghidra's auto-analysis during the headless run.</span>
+                  <span class="d-block text-body-secondary"
+                    >Enable Ghidra's auto-analysis during the headless
+                    run.</span
+                  >
                 </label>
               </div>
             </div>
 
             <div class="modal-footer">
-              <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Cancel</button>
-              <button id="upload-submit" class="btn btn-primary" type="submit">Analyze</button>
+              <button
+                class="btn btn-outline-secondary"
+                type="button"
+                data-bs-dismiss="modal"
+              >
+                Cancel
+              </button>
+              <button id="upload-submit" class="btn btn-primary" type="submit">
+                Analyze
+              </button>
             </div>
           </form>
         </div>
       </div>
     </div>
 
+    <!-- ===================================================================
+         Delete confirmation (Bootstrap modal)
+         =================================================================== -->
+    <div
+      class="modal fade"
+      id="confirm-modal"
+      tabindex="-1"
+      aria-labelledby="confirm-title"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="confirm-title">Delete program</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <p id="confirm-message" class="mb-0"></p>
+          </div>
+          <div class="modal-footer">
+            <button
+              class="btn btn-outline-secondary"
+              type="button"
+              data-bs-dismiss="modal"
+            >
+              Cancel
+            </button>
+            <button id="confirm-ok" class="btn btn-danger" type="button">
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="/vendor/bootstrap/bootstrap.bundle.min.js"></script>
     <script src="/js/api.js"></script>
+    <script src="/js/ui.js"></script>
     <script src="/js/app.js"></script>
   </body>
 </html>

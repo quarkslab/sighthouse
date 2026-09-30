@@ -13,6 +13,7 @@ from sighthouse.frontend.cli import (
     list_frontent_cmd_handler,
     remove_frontent_cmd_handler,
     reset_password_frontent_cmd_handler,
+    set_role_frontent_cmd_handler,
     add_to_cli,
 )
 from sighthouse.frontend.database import FrontendDatabase
@@ -34,6 +35,8 @@ class FrontendCliTestBase(unittest.TestCase):
             repo_url=self.repo_url,
             username="alice",
             password=None,
+            admin=False,
+            role=None,
         )
         for k, v in overrides.items():
             setattr(args, k, v)
@@ -117,6 +120,40 @@ class FrontendCliTestBase(unittest.TestCase):
             )
         self.assertIn("Fail to find user", buf.getvalue())
 
+    def test_add_user_admin_flag_sets_admin_role(self):
+        add_frontent_cmd_handler(
+            None, self._args(username="root", password="p", admin=True), []
+        )
+        self.assertEqual(self.db.get_user_by_name("root").role, "admin")
+
+    def test_add_user_defaults_to_user_role(self):
+        add_frontent_cmd_handler(None, self._args(username="alice", password="p"), [])
+        self.assertEqual(self.db.get_user_by_name("alice").role, "user")
+
+    def test_set_role_promotes_and_demotes(self):
+        add_frontent_cmd_handler(None, self._args(username="alice", password="p"), [])
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            set_role_frontent_cmd_handler(
+                None, self._args(username="alice", role="admin"), []
+            )
+        self.assertIn("admin", buf.getvalue())
+        self.assertEqual(self.db.get_user_by_name("alice").role, "admin")
+
+        set_role_frontent_cmd_handler(
+            None, self._args(username="alice", role="user"), []
+        )
+        self.assertEqual(self.db.get_user_by_name("alice").role, "user")
+
+    def test_set_role_unknown_user_reports_error(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            set_role_frontent_cmd_handler(
+                None, self._args(username="ghost", role="admin"), []
+            )
+        self.assertIn("Fail to find user", buf.getvalue())
+
     def test_registers_frontend_commands(self):
         import argparse
         from sighthouse.cli import SightHouseCommandLine
@@ -129,7 +166,14 @@ class FrontendCliTestBase(unittest.TestCase):
         self.assertIn("frontend", app._commands)
         sub = next(a for a in app._actions if isinstance(a, argparse._SubParsersAction))
         frontend_parser = sub.choices["frontend"]
-        for cmd in ("add-user", "list-user", "rm-user", "start", "reset-pwd"):
+        for cmd in (
+            "add-user",
+            "list-user",
+            "rm-user",
+            "start",
+            "reset-pwd",
+            "set-role",
+        ):
             self.assertIn(cmd, frontend_parser._commands)
 
 

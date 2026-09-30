@@ -12,6 +12,8 @@ from griffe._internal.docstrings.models import (
 )
 
 from sighthouse.frontend.restapi import FrontendRestAPI
+from sighthouse.frontend.database import FrontendDatabase
+from sighthouse.frontend.model import FrontendConfig
 
 log = logging.getLogger("mkdocs")
 
@@ -26,8 +28,11 @@ def convert_markdown_to_html(markdown_content):
 
 
 def generate_api_description(page):
+    db = FrontendDatabase("sqlite://:memory:")
+    cfg = FrontendConfig("sqlite://:memory:", port=6672)
+    db.set_config(cfg)
     # Create a fake frontend API to trigger routes registration
-    frontend = FrontendRestAPI(None, "", None, [], [], None)
+    frontend = FrontendRestAPI(db, logger=None)
     # Accessing private flask member of FrontendRestAPI class
     app = frontend.__dict__.get("_FrontendRestAPI__app")
     if app is None:

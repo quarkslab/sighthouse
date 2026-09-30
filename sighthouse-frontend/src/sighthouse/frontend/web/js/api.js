@@ -81,6 +81,84 @@ class SightHouseApi {
     return true;
   }
 
+  // POST /setup {user, password} (creates the first admin; only on an empty DB)
+  async runSetup(user, password) {
+    await this._request("setup", { method: "POST", json: { user, password } });
+    return true;
+  }
+
+  // GET /me -> {id, name, role} for the current session
+  async getMe() {
+    const { body } = await this._request("me");
+    return (body && body.user) || null;
+  }
+
+  // GET /users -> [{id, name, role}] (admin only)
+  async listUsers() {
+    const { body } = await this._request("users");
+    return (body && body.users) || [];
+  }
+
+  // POST /users {user, password, role} (admin only)
+  async createUser(user, password, role) {
+    await this._request("users", {
+      method: "POST",
+      json: { user, password, role },
+    });
+    return true;
+  }
+
+  // DELETE /users {user} (admin only; user identified by name)
+  async deleteUser(user) {
+    await this._request("users", { method: "DELETE", json: { user } });
+    return true;
+  }
+
+  // PUT /users {user, role?, password?} (admin only)
+  async updateUser(user, { role, password } = {}) {
+    // undefined fields are dropped by JSON.stringify
+    await this._request("users", {
+      method: "PUT",
+      json: { user, role, password },
+    });
+    return true;
+  }
+
+  // GET /config -> { key: value } curated server configuration (admin only)
+  async getConfig() {
+    const { body } = await this._request("config");
+    return (body && body.configuration) || {};
+  }
+
+  // PUT /config {partial config} -> { configuration, restart_required } (admin only)
+  async updateConfig(config) {
+    const { body } = await this._request("config", {
+      method: "PUT",
+      json: config,
+    });
+    return body || {};
+  }
+
+  // POST /restart {force} -> triggers a full server restart (admin only)
+  async restartServer(force) {
+    await this._request("restart", { 
+      method: "POST", 
+      json: { 
+        "force": force || "false"
+      }});
+    return true;
+  }
+
+  // GET /ping -> true when the server is up and responding.
+  async ping() {
+    try {
+      const { status } = await this._request("ping");
+      return status === 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // GET /languages -> string[]
   async getLanguages() {
     const { body } = await this._request("languages");

@@ -87,7 +87,7 @@ class LocalRestAPI(ServerThread):
                         self.__database.get_upload_dir(program.user)
                         + f"{program.id}_config.json"
                     )
-                    self.__database.repo.delete_file(file)
+                    self.__database.require_repo().delete_file(file)
                 except Exception as e:
                     print(e)
             return jsonify({"success": "Analysis status updated"}), 200

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+  <head>
+    <!--
+      +-----------------------------------------------------------------------+
+      | DISCLAIMER: This file was generated with the assistance of a          |
+      | Large Language Model (LLM) because I have poor web UI skills. The     |
+      | rest of the code was written by humans. If this is a problem for you, |
+      | feel free to use one of the other clients, or you are more than       |
+      | welcome to propose a PR :)                                            |
+      +-----------------------------------------------------------------------+
+    -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SightHouse Setup</title>
+    <link rel="stylesheet" href="/vendor/bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <div
+      class="min-vh-100 d-flex align-items-center justify-content-center p-3"
+    >
+      <div class="card shadow" style="width: 100%; max-width: 420px">
+        <div class="card-body p-4">
+          <div class="text-center mb-4">
+            <img
+              src="/assets/logo.png"
+              alt="SightHouse logo"
+              width="128"
+              height="128"
+              class="mb-2"
+            />
+            <div class="fs-6 fw-semibold">Sight<b>House</b></div>
+            <p class="text-body-secondary mt-2 mb-0">
+              Welcome! Create the administrator account to get started.
+            </p>
+          </div>
+
+          <form id="setup-form" novalidate>
+            <div
+              id="setup-error"
+              class="alert alert-danger d-none"
+              role="alert"
+            ></div>
+            <div class="mb-3">
+              <label class="form-label" for="setup-user">Admin username</label>
+              <input
+                id="setup-user"
+                class="form-control"
+                type="text"
+                autocomplete="username"
+                placeholder="admin"
+                required
+              />
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="setup-password">Password</label>
+              <input
+                id="setup-password"
+                class="form-control"
+                type="password"
+                autocomplete="new-password"
+                placeholder="********"
+                required
+              />
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="setup-confirm"
+                >Confirm password</label
+              >
+              <input
+                id="setup-confirm"
+                class="form-control"
+                type="password"
+                autocomplete="new-password"
+                placeholder="********"
+                required
+              />
+            </div>
+            <button
+              id="setup-submit"
+              class="btn btn-primary w-100"
+              type="submit"
+            >
+              Create administrator
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script src="/js/ui.js"></script>
+    <script src="/js/setup.js"></script>
+  </body>
+</html>

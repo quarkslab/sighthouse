@@ -3,13 +3,25 @@
 from typing import List, Optional, Tuple, cast
 from traceback import format_exception
 from secrets import token_hex
+from functools import wraps
 from logging import Logger
 from pathlib import Path
+import threading
+import signal
 import time
 import json
+import os
 
 from celery import Celery
-from flask import Flask, request, jsonify, Response, send_from_directory
+from flask import (
+    Flask,
+    request,
+    jsonify,
+    Response,
+    send_from_directory,
+    abort,
+    redirect,
+)
 from flask_login import (
     login_user,
     login_required,
@@ -18,9 +30,9 @@ from flask_login import (
     LoginManager,
 )
 from werkzeug.exceptions import HTTPException
-from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
 
+from sighthouse.version import __version__
 from sighthouse.frontend.database import FrontendDatabase, RestError
 from sighthouse.frontend.model import (
     User,
@@ -30,25 +42,24 @@ from sighthouse.frontend.model import (
     Function,
     Analysis,
     AnalysisOptions,
+    FrontendConfig,
 )
 from sighthouse.core.utils.analyzer import get_ghidra_languages
 from sighthouse.core.utils.api import ServerThread
 from sighthouse.core.utils import parse_uri
 
-DEFAULT_BSIM_OPTIONS = {
-    "min_instructions": 10,  # Mininum number of instruction to filter function
-    "max_instructions": 0,  # Maximum number of instruction to filter function
-    # (No maximum by default)
-    "number_of_matches": 10,  # Max number of matches per function
-    "similarity": 0.7,  # Similarity threshold [0:1]
-    "confidence": 1.0,  # Confidence threshold [0:+inf]
-}
 
-DEFAULT_FIDB_OPTIONS = {
-    "min_instructions": 2,  # Mininum number of instruction to filter function
-    "max_instructions": 0,  # Maximum number of instruction to filter function
-    # (No maximum by default)
-}
+def admin_required(f):
+    """Restrict a route to logged-in administrators"""
+
+    @wraps(f)
+    @login_required
+    def wrapper(*args, **kwargs):
+        if not get_current_user().is_admin():
+            abort(403)
+        return f(*args, **kwargs)
+
+    return wrapper
 
 
 def get_current_user() -> User:
@@ -57,19 +68,30 @@ def get_current_user() -> User:
     return cast(User, current_user)
 
 
+def build_analysis_databases(urls: List[str]) -> List[dict]:
+    """Turn a list of BSIM/FIDB URIs into the analyzer's ``databases`` entries."""
+    databases = []
+    for e in (parse_uri(u) for u in urls):
+        url = (
+            f"{e['type']}://{e['host']}:{e['port']}/{e['dbname']}"
+            if "dbname" in e
+            else str(e["database"])
+        )
+        databases.append(
+            {"url": url, "user": e.get("user", ""), "password": e.get("password") or ""}
+        )
+    return databases
+
+
 class FrontendRestAPI(ServerThread):
     """REST API server for SightHouse public API"""
 
     def __init__(
         self,
         database: FrontendDatabase,
-        celery_url: str,
-        ghidra_dir: Path,
-        urls: Optional[List[str]],
         logger: Logger,
-        host: str = "0.0.0.0",
-        port: int = 6671,
     ):
+        self.__config = database.get_config()
         self.__database: FrontendDatabase = database
         self.__logger = logger
         self.__app = Flask(__name__, static_url_path="", static_folder="web")
@@ -79,15 +101,15 @@ class FrontendRestAPI(ServerThread):
         self.__login_manager = LoginManager()
         self.__login_manager.init_app(self.__app)
         self.__register_user_stuff()
-        self.__ghidra_dir = ghidra_dir
         self.__languages_cache: Optional[List[str]] = (
             None  # lazily-filled Ghidra language list
         )
-        self.__urls = urls or []
-        self.__celery_app = Celery("", broker=celery_url, backend=celery_url)  # Useless
+        self.__celery_app = Celery(
+            "", broker=self.__config.worker_url, backend=self.__config.worker_url
+        )
         self.__static_dir = Path(self.__app.root_path) / "web"
 
-        super().__init__(self.__app, host, port)
+        super().__init__(self.__app, self.__config.host, self.__config.port)
 
     def __register_user_stuff(self) -> None:
         """Register login manager handler to flask"""
@@ -119,10 +141,400 @@ class FrontendRestAPI(ServerThread):
 
     def __register_routes(self) -> None:
 
+        def config_response() -> dict:
+            """Body shared by GET and PUT /api/v1/config."""
+            return {"version": __version__, **self.__config.to_dict()}
+
         @self.__app.route("/", methods=["GET"])
         def index():
-            """Serve static files"""
+            """Serve the analysis app, or the setup wizard on a fresh install"""
+            if not self.__database.database_is_setup():
+                return redirect("/setup")
             return send_from_directory(self.__static_dir, "index.html")
+
+        @self.__app.route("/setup", methods=["GET"])
+        def setup_page():
+            """Serve the first-run wizard, only while the app is unconfigured."""
+            if self.__database.database_is_setup():
+                return redirect("/")
+            return send_from_directory(self.__static_dir, "setup.html")
+
+        @self.__app.route("/admin", methods=["GET"])
+        @admin_required
+        def admin_page():
+            """Serve the admin page"""
+            return send_from_directory(self.__static_dir, "admin.html")
+
+        @self.__app.route("/api/v1/setup", methods=["GET"])
+        def need_setup() -> Tuple[Response, int]:
+            """
+            Setup check endpoint
+
+            Returns:
+                200: successful operation
+                     ```
+                     {
+                         "need_setup": <True / False>
+                     }
+                     ```
+            """
+            return jsonify({"need_setup": not self.__database.database_is_setup()}), 200
+
+        @self.__app.route("/api/v1/setup", methods=["POST"])
+        def do_setup() -> Tuple[Response, int]:
+            """
+            Perform setup endpoint
+
+            Params:
+                user (User): First user to create as admin
+
+            Returns:
+                200: successful operation
+                     ```
+                     {
+                         "success": "Setup successful"
+                     }
+                     ```
+
+                400: Invalid user/password value
+                    ```
+                    {
+                       "error": "Missing user or password"
+                    }
+                    ```
+
+                500: Internal server error
+                    ```
+                    {
+                       "error": "Fail to add user to database"
+                    }
+                    ```
+            """
+            if self.__database.database_is_setup():
+                return jsonify({"error": "Frontend is already setup"}), 400
+
+            data = request.get_json()
+            if not data or not data.get("user") or not data.get("password"):
+                return jsonify({"error": "Missing user or password"}), 400
+
+            user = self.__database.add_user(
+                User.create(data["user"], data["password"], "admin")
+            )
+            if user is None:
+                return jsonify({"error": "Fail to add user to database"}), 500
+
+            self.__database.mark_setup_done()
+            return jsonify({"success": "Setup successful"}), 200
+
+        @self.__app.route("/api/v1/users", methods=["GET"])
+        @admin_required
+        def get_users():
+            """
+            Return the list of users without their password hash
+
+            Returns:
+                200: Successful operation
+                    ```
+                    {
+                       "users": [{
+                            "id": 1234,
+                            "name": "test",
+                            "role": "user"
+                        }, {...}]
+                    }
+                    ```
+            """
+            users = self.__database.list_users()
+            return jsonify({"users": [u.to_public_dict() for u in users]}), 200
+
+        @self.__app.route("/api/v1/users", methods=["POST"])
+        @admin_required
+        def add_user():
+            """
+            Add a new user in the database
+
+            Returns:
+                201: Successful operation
+                    ```
+                    {
+                       "success": "User was added"
+                    }
+                    ```
+
+                400: Invalid user/password value
+                    ```
+                    {
+                       "error": "Missing user or password"
+                    }
+                    ```
+
+                500: Internal server error
+                    ```
+                    {
+                       "error": "Fail to add user to database"
+                    }
+                    ```
+            """
+
+            data = request.get_json()
+            if (
+                not data
+                or not data.get("user")
+                or not data.get("password")
+                or not data.get("role") in User.VALID_ROLES
+            ):
+                return jsonify({"error": "Missing user, password or role"}), 400
+
+            user = self.__database.add_user(
+                User.create(data["user"], data["password"], data["role"])
+            )
+            if user is None:
+                return jsonify({"error": "Fail to add user to database"}), 500
+
+            return jsonify({"success": "User was added"}), 201
+
+        @self.__app.route("/api/v1/users", methods=["DELETE"])
+        @admin_required
+        def remove_user():
+            """
+            Delete a user, revoke the session if an administrator deletes itself
+
+            Returns:
+                200: Successful operation
+                    ```
+                    {
+                       "success": "User was deleted"
+                    }
+                    ```
+
+                400: Invalid parameters or last administrator
+                    ```
+                    {
+                       "error": "Missing user"
+                    }
+                    ```
+
+                500: Internal server error
+                    ```
+                    {
+                       "error": "Fail to delete user to database"
+                    }
+                    ```
+            """
+
+            data = request.get_json()
+            if not data or not data.get("user"):
+                return jsonify({"error": "Missing user"}), 400
+
+            user = self.__database.get_user_by_name(data["user"])
+            if user is None:
+                # Deleting a missing user is a no-op
+                return jsonify({"success": "User was deleted"}), 200
+
+            if user.is_admin() and self.__database.count_admins() == 1:
+                return jsonify({"error": "Cannot delete the last administrator"}), 400
+
+            if not self.__database.delete_user(user):
+                return jsonify({"error": "Fail to delete user to database"}), 500
+
+            if user.is_admin() and user.id == get_current_user().id:
+                logout_user()
+
+            return jsonify({"success": "User was deleted"}), 200
+
+        @self.__app.route("/api/v1/users", methods=["PUT"])
+        @admin_required
+        def update_user():
+            """
+            Update a user role or password in the database
+
+            Returns:
+                200: Successful operation
+                    ```
+                    {
+                       "success": "User was updated"
+                    }
+                    ```
+
+                400: Invalid user/password value
+                    ```
+                    {
+                       "error": "Missing user/role/password"
+                    }
+                    ```
+
+                500: Internal server error
+                    ```
+                    {
+                       "error": "Fail to update user in database"
+                    }
+                    ```
+            """
+            data = request.get_json()
+            if not data or not data.get("user"):
+                return jsonify({"error": "Missing user"}), 400
+
+            if not data.get("password") and not data.get("role"):
+                return jsonify({"error": "Missing password/role"}), 400
+
+            if data.get("role") and data["role"] not in User.VALID_ROLES:
+                return jsonify({"error": "Invalid role"}), 400
+
+            user = self.__database.get_user_by_name(data["user"])
+            if user is None:
+                return jsonify({"error": "User does not exists"}), 400
+
+            was_admin = user.is_admin()
+            if (
+                was_admin
+                and data.get("role") == "user"
+                and self.__database.count_admins() == 1
+            ):
+                return (
+                    jsonify(
+                        {"error": "Cannot remove role from the last administrator"}
+                    ),
+                    400,
+                )
+
+            if data.get("role"):
+                user.role = data["role"]
+            if data.get("password"):
+                user.set_password(data["password"])
+
+            if not self.__database.update_user(user):
+                return jsonify({"error": "Fail to update user in database"}), 500
+
+            # Revoke the session of an administrator demoting itself
+            if was_admin and not user.is_admin() and user.id == get_current_user().id:
+                logout_user()
+
+            return jsonify({"success": "User was updated"}), 200
+
+        @self.__app.route("/api/v1/config", methods=["GET"])
+        @admin_required
+        def get_server_config():
+            """
+            Get the server configuration
+
+            Returns:
+                200: Successful operation
+                    ```
+                    {
+                       "configuration": {
+                            "version": "1.0.0",
+                            "host": "0.0.0.0",
+                            ...
+                       }
+                    }
+                    ```
+            """
+            return jsonify({"configuration": config_response()}), 200
+
+        @self.__app.route("/api/v1/config", methods=["PUT"])
+        @admin_required
+        def update_config():
+            """
+            Update (partially) the frontend configuration
+
+            Returns:
+                200: Successful operation
+                    ```
+                    {
+                       "configuration": {...},
+                       "restart_required": ["port", ...]
+                    }
+                    ```
+
+                400: Invalid parameters
+                    ```
+                    {
+                       "error": "port must be between 1024 and 65535"
+                    }
+                    ```
+            """
+            data = request.get_json() or {}
+            try:
+                merged = self.__config.to_dict()
+                for key, value in data.items():
+                    if key in ("bsim_config", "fidb_config") and isinstance(
+                        value, dict
+                    ):
+                        merged[key].update(value)
+                    else:
+                        merged[key] = value
+                # database_uri is not client-settable
+                merged["database_uri"] = self.__config.database_uri
+
+                config = FrontendConfig.from_dict(merged)
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
+
+            # BSIM/FIDB settings apply on the next analysis, others need a restart
+            restart_required = config.restart_required(self.__config)
+            self.__database.set_config(config)
+            self.__config = config
+
+            return (
+                jsonify(
+                    {
+                        "configuration": config_response(),
+                        "restart_required": restart_required,
+                    }
+                ),
+                200,
+            )
+
+        @self.__app.route("/api/v1/restart", methods=["POST"])
+        @admin_required
+        def restart_server() -> Tuple[Response, int]:
+            """
+            Restart the server to apply restart-only configuration changes.
+            Requires the SIGHUP handler installed by `frontend start`.
+
+            Returns:
+                200: the server is restarting
+                    ```
+                    {
+                        "success": "Server is restarting"
+                    }
+                    ```
+
+                501: restart is not supported in this environment
+                    ```
+                    {
+                        "error": "Restart is not supported in this environment"
+                    }
+                    ```
+            """
+            data = request.get_json() or {}
+            if self.__database.analysis_count() > 0 and (
+                "force" not in data or data.get("force", "").lower() != "true"
+            ):
+                return (
+                    jsonify(
+                        {"error": "Server has running analyses. Need to force restart"}
+                    ),
+                    400,
+                )
+
+            if not hasattr(signal, "SIGHUP") or signal.getsignal(signal.SIGHUP) in (
+                signal.SIG_DFL,
+                signal.SIG_IGN,
+                None,
+            ):
+                return (
+                    jsonify({"error": "Restart is not supported in this environment"}),
+                    501,
+                )
+
+            def _trigger() -> None:
+                # Let the response flush first
+                time.sleep(0.5)
+                os.kill(os.getpid(), signal.SIGHUP)
+
+            threading.Thread(target=_trigger, daemon=True).start()
+            return jsonify({"success": "Server is restarting"}), 200
 
         @self.__app.route("/api/v1/ping", methods=["GET"])
         def ping() -> Tuple[Response, int]:
@@ -175,7 +587,7 @@ class FrontendRestAPI(ServerThread):
                 return jsonify({"error": "Missing user or password"}), 400
 
             user = self.__database.get_user_by_name(data["user"])
-            if not user or not check_password_hash(user.hash, data["password"]):
+            if not user or not user.check_password(data["password"]):
                 return jsonify({"error": "Invalid credentials"}), 401
 
             login_user(user, remember=False)
@@ -198,6 +610,26 @@ class FrontendRestAPI(ServerThread):
             """
             logout_user()
             return jsonify({"success": "Logout successful"}), 200
+
+        @self.__app.route("/api/v1/me", methods=["GET"])
+        @login_required
+        def get_user_info() -> Tuple[Response, int]:
+            """
+            Get current user informations endpoint
+
+            Returns:
+                200: Successful operation
+                    ```
+                    {
+                       "user": {
+                            "id": 1234,
+                            "name": "test",
+                            "role": "user"
+                       }
+                    }
+                    ```
+            """
+            return jsonify({"user": get_current_user().to_public_dict()}), 200
 
         @self.__app.route("/api/v1/languages", methods=["GET"])
         def list_languages() -> Tuple[Response, int]:
@@ -628,6 +1060,33 @@ class FrontendRestAPI(ServerThread):
                     }
                     ```
             """
+            # Unsure that everything is ready for analysis
+            ghidra_dir = (
+                Path(self.__config.ghidra_dir) if self.__config.ghidra_dir else None
+            )
+            if ghidra_dir is None or not ghidra_dir.is_dir() or not ghidra_dir.exists():
+                return (
+                    jsonify(
+                        {
+                            "error": "Ghidra directory not set. Set it in the administrator panel."
+                        }
+                    ),
+                    500,
+                )
+
+            if (
+                len(self.__config.bsim_config.urls) == 0
+                and len(self.__config.fidb_config.urls) == 0
+            ):
+                return (
+                    jsonify(
+                        {
+                            "error": "No FIDB or BSIM database set. Set it in the administrator panel."
+                        }
+                    ),
+                    500,
+                )
+
             program = self.__database.get_program(
                 program_id, user_id=get_current_user().id
             )
@@ -667,37 +1126,26 @@ class FrontendRestAPI(ServerThread):
                     500,
                 )
 
-            # Dedup urls
-            urls = [parse_uri(e) for e in self.__urls]
-            databases = []
-            seen_urls = set()
-            for e in urls:
-                url = (
-                    f"{e['type']}://{e['host']}:{e['port']}/{e['dbname']}"
-                    if "dbname" in e
-                    else str(e["database"])
-                )
-                if url not in seen_urls:
-                    seen_urls.add(url)
-                    databases.append(
-                        {
-                            "url": url,
-                            "user": e.get("user", ""),
-                            "password": e.get("password") or "",
-                        }
-                    )
-
+            bsim_opts = self.__config.bsim_config.to_dict()
+            fidb_opts = self.__config.fidb_config.to_dict()
             config = {
                 "program": self.__jsonify_program(program),
-                "databases": databases,
-                "bsim": {**DEFAULT_BSIM_OPTIONS},
-                "fidb": {**DEFAULT_FIDB_OPTIONS},
+                "bsim": {
+                    "enabled": True,
+                    "databases": build_analysis_databases(bsim_opts.pop("urls")),
+                    **bsim_opts,
+                },
+                "fidb": {
+                    "enabled": True,
+                    "databases": build_analysis_databases(fidb_opts.pop("urls")),
+                    **fidb_opts,
+                },
             }
             upload_file_config = (
                 self.__database.get_upload_dir(program.user)
                 + f"{program.id}_config.json"
             )
-            if not self.__database.repo.push_file(
+            if not self.__database.require_repo().push_file(
                 upload_file_config, json.dumps(config).encode("utf-8")
             ):
                 return (
@@ -720,7 +1168,9 @@ class FrontendRestAPI(ServerThread):
                     "job_data": {
                         "binary": str(sharefile),
                         "config": str(
-                            self.__database.repo.get_sharefile(upload_file_config)
+                            self.__database.require_repo().get_sharefile(
+                                upload_file_config
+                            )
                         ),
                         "options": options.to_dict(),
                     }
@@ -747,6 +1197,20 @@ class FrontendRestAPI(ServerThread):
                 404: The specified program does not exist
                 500: Internal server error
             """
+            # Unsure that everything is ready for analysis
+            ghidra_dir = (
+                Path(self.__config.ghidra_dir) if self.__config.ghidra_dir else None
+            )
+            if ghidra_dir is None or not ghidra_dir.is_dir() or not ghidra_dir.exists():
+                return (
+                    jsonify(
+                        {
+                            "error": "Ghidra directory not set. Set it in the administrator panel."
+                        }
+                    ),
+                    500,
+                )
+
             program = self.__database.get_program(
                 program_id, user_id=get_current_user().id
             )
@@ -1428,8 +1892,13 @@ class FrontendRestAPI(ServerThread):
 
     def __languages(self) -> list:
         """The Ghidra language list, scanned once and cached"""
+        # ghidra_dir may be unset
+        if not self.__config.ghidra_dir:
+            return []
         if self.__languages_cache is None:
-            self.__languages_cache = get_ghidra_languages(self.__ghidra_dir)
+            self.__languages_cache = get_ghidra_languages(
+                Path(self.__config.ghidra_dir)
+            )
         return self.__languages_cache
 
     def __is_valid_language(

@@ -8,7 +8,16 @@ import json
 
 from sighthouse.core.utils.database import Database
 from sighthouse.core.utils.repo import Repo
-from .model import User, File, Program, Section, Function, Match, Analysis
+from .model import (
+    User,
+    File,
+    Program,
+    Section,
+    Function,
+    Match,
+    Analysis,
+    FrontendConfig,
+)
 
 
 class RestError(ValueError):
@@ -26,10 +35,13 @@ class FrontendDatabase(Database):
     USER_UPLOAD_DIR = "/uploads"
     USER_LOGS_DIR = "/logs"
 
+    # Bump this whenever the database schema change
+    DB_VERSION = 1
+
     def __init__(
         self,
         uri: str,
-        repo: str,
+        repo: Optional[str] = None,
         exist_ok: bool = False,
         logger: Optional[Logger] = None,
     ):
@@ -47,20 +59,45 @@ class FrontendDatabase(Database):
         """
         super().__init__(uri, exist_ok=exist_ok, logger=logger)
 
-        self.repo = Repo(repo, exist_ok=exist_ok, secure=False)
-
-        # Create tables if they do not exists
-        self._init_database()
+        self.repo: Optional[Repo] = None
+        if repo:
+            self.set_repo(repo, exist_ok)
         self._analysis_lock = Lock()
         self._running_analysis: Dict[int, Analysis] = {}
+        # Only cache True: the setup flag never goes back to False
+        self._setup_done = False
+
+        had_users = self._table_exists("Users")
+        self._init_database()
+
+        stored = self._get_config_item("database.version")
+        if stored:
+            version = int(stored)
+        elif had_users:
+            # Legacy database, created before versioning
+            version = 0
+        else:
+            version = self.DB_VERSION
+            self._set_config_item("database.version", str(self.DB_VERSION))
+        self._apply_migrations(version)
 
     def __repr__(self):
         return (
-            f"<FrontendDatabase(uri={self._uri}, repo={self.repo} "
+            f"<FrontendDatabase(uri={self._uri}, repo={self.repo or 'unset'} "
             f"connected={self._db is not None})>"
         )
 
     ## Repo stuff
+
+    def require_repo(self) -> Repo:
+        """Return the repository, raise RestError if it was never configured"""
+        if self.repo is None:
+            raise RestError("Repository is not configured", code=500)
+        return self.repo
+
+    def set_repo(self, repo: str, exist_ok: bool = False) -> None:
+        """Set/update the repository used by this database"""
+        self.repo = Repo(repo, exist_ok=exist_ok, secure=False)
 
     def get_username(self, user: User | int) -> str:
         """Create user directory to store files with root as parent"""
@@ -91,14 +128,14 @@ class FrontendDatabase(Database):
         return self.get_username(user) + "/" + self.USER_UPLOAD_DIR + "/"
 
     def __push_file(self, file: File) -> bool:
-        if file.hash is None or file.content is None:
+        if file.hash is None or file.content is None or self.repo is None:
             return False
 
         upload_path = self.get_upload_dir(file.user) + file.hash
         return self.repo.push_file(upload_path, file.content)
 
     def __delete_file(self, file: File) -> None:
-        if file.hash is not None:
+        if file.hash is not None and self.repo is not None:
             upload_path = self.get_upload_dir(file.user) + file.hash
             self.repo.delete_file(upload_path)
 
@@ -111,7 +148,7 @@ class FrontendDatabase(Database):
         Returns:
             Optional[bytes]: The file content on success, None otherwise
         """
-        if file.hash is None:
+        if file.hash is None or self.repo is None:
             return None
 
         upload_path = self.get_upload_dir(file.user) + file.hash
@@ -126,7 +163,7 @@ class FrontendDatabase(Database):
         Returns:
             Path | str: A path-like object corresponding to the file location
         """
-        if file.hash is None:
+        if file.hash is None or self.repo is None:
             return ""
 
         upload_path = self.get_upload_dir(file.user) + file.hash
@@ -147,10 +184,18 @@ class FrontendDatabase(Database):
             auto_increment = "INTEGER"
 
         self.execute(f"""
+            CREATE TABLE IF NOT EXISTS Config (
+                id {auto_increment} PRIMARY KEY,
+                "key" TEXT NOT NULL UNIQUE,
+                value TEXT NOT NULL
+            );""")
+
+        self.execute(f"""
             CREATE TABLE IF NOT EXISTS Users (
                 id {auto_increment} PRIMARY KEY,
                 name TEXT NOT NULL,
-                hash TEXT NOT NULL
+                hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user'
             );
             """)
 
@@ -211,6 +256,67 @@ class FrontendDatabase(Database):
         );
         """)
 
+    def _apply_migrations(self, version: int) -> None:
+        """Migrate the database up to the latest version"""
+        migrations = {1: self._migrate_0_to_1}
+        for target in range(version + 1, self.DB_VERSION + 1):
+            if self._logger:
+                self._logger.info(f"Applying DB migration for v{target}")
+            migrations[target]()
+            self._set_config_item("database.version", str(target))
+
+    def _migrate_0_to_1(self) -> None:
+        """Add user roles, Config table is already created by _init_database()"""
+        self.execute("ALTER TABLE Users ADD COLUMN role TEXT NOT NULL DEFAULT 'user';")
+
+    def _get_config_item(self, key: str) -> Optional[str]:
+        """Return the configuration value of the given key, None if missing"""
+        rows = self.fetch('SELECT value FROM Config WHERE "key" = ?;', (key,))
+        return rows[0][0] if rows else None
+
+    def _set_config_item(self, key: str, value: str) -> None:
+        """Insert or update a configuration key/value pair"""
+        self.execute(
+            'INSERT INTO Config ("key", value) VALUES (?, ?) '
+            'ON CONFLICT ("key") DO UPDATE SET value = excluded.value;',
+            (key, value),
+        )
+
+    def get_config(self) -> FrontendConfig:
+        """Return the stored frontend configuration, or the default one"""
+        config = self._get_config_item("frontend.config")
+        if config is None:
+            return FrontendConfig(self._uri)
+
+        data = json.loads(config)
+        # database_uri is never persisted, it is the live connection
+        data["database_uri"] = self._uri
+        return FrontendConfig.from_dict(data)
+
+    def set_config(self, config: FrontendConfig) -> None:
+        """Validate and store the frontend configuration, raise ValueError if invalid"""
+        config.validate()
+        data = config.to_dict()
+        del data["database_uri"]
+        self._set_config_item("frontend.config", json.dumps(data))
+
+    def mark_setup_done(self) -> None:
+        self._set_config_item("setup.done", "1")
+        self._setup_done = True
+
+    def database_is_setup(self) -> bool:
+        """Whether setup was marked done, or users exist (legacy/CLI-created databases)"""
+        if not self._setup_done:
+            self._setup_done = (
+                self._get_config_item("setup.done") == "1"
+                or len(self.fetch("SELECT 1 FROM Users LIMIT 1;")) > 0
+            )
+        return self._setup_done
+
+    def count_admins(self) -> int:
+        rows = self.fetch("SELECT COUNT(*) FROM Users WHERE role = 'admin';")
+        return rows[0][0]
+
     def add_user(self, user: User) -> Optional[User]:
         """Add a new user to the database.
 
@@ -234,7 +340,8 @@ class FrontendDatabase(Database):
             return None
 
         user_id = self.execute(
-            "INSERT INTO Users (name, hash) VALUES (?, ?);", (user.name, user.hash)
+            "INSERT INTO Users (name, hash, role) VALUES (?, ?, ?);",
+            (user.name, user.hash, user.role),
         )
         if user_id is None:
             return None
@@ -252,10 +359,12 @@ class FrontendDatabase(Database):
             Optional[User]: An instance of the User class with the retrieved user details,
                             or None if not found.
         """
-        rows = self.fetch("SELECT id, name, hash FROM Users WHERE id = ?;", (user_id,))
+        rows = self.fetch(
+            "SELECT id, name, hash, role FROM Users WHERE id = ?;", (user_id,)
+        )
         if len(rows) == 1:
             return User(
-                id=rows[0][0], name=rows[0][1], hash=rows[0][2]  # id  # name  # hash
+                id=rows[0][0], name=rows[0][1], hash=rows[0][2], role=rows[0][3]
             )
 
         return None
@@ -270,10 +379,12 @@ class FrontendDatabase(Database):
             Optional[User]: An instance of the User class with the retrieved user details,
                             or None if not found.
         """
-        rows = self.fetch("SELECT id, name, hash FROM Users WHERE name = ?;", (name,))
+        rows = self.fetch(
+            "SELECT id, name, hash, role FROM Users WHERE name = ?;", (name,)
+        )
         if len(rows) == 1:
             return User(
-                id=rows[0][0], name=rows[0][1], hash=rows[0][2]  # id  # name  # hash
+                id=rows[0][0], name=rows[0][1], hash=rows[0][2], role=rows[0][3]
             )
 
         return None
@@ -283,7 +394,7 @@ class FrontendDatabase(Database):
         Updates the details of a user in the database.
         Args:
             user (User): The User object containing the updated information.
-                         It must have 'name', 'hash', and 'id' attributes.
+                         It must have 'name', 'hash', 'role' and 'id' attributes.
 
         Returns:
             bool: True if the update was successful.
@@ -297,8 +408,8 @@ class FrontendDatabase(Database):
             )
 
         self.execute(
-            "UPDATE Users SET name = ?, hash = ? WHERE id = ?;",
-            (user.name, user.hash, user.id),
+            "UPDATE Users SET name = ?, hash = ?, role = ? WHERE id = ?;",
+            (user.name, user.hash, user.role, user.id),
         )
         return True
 
@@ -310,11 +421,9 @@ class FrontendDatabase(Database):
             list[User]: A list of User objects.
         """
         users = []
-        rows = self.fetch("SELECT id, name, hash FROM Users;")
+        rows = self.fetch("SELECT id, name, hash, role FROM Users;")
         for row in rows:
-            users.append(
-                User(id=row[0], name=row[1], hash=row[2])  # id  # name  # hash
-            )
+            users.append(User(id=row[0], name=row[1], hash=row[2], role=row[3]))
 
         return users
 
@@ -1167,6 +1276,15 @@ class FrontendDatabase(Database):
             analysis = None
 
         return analysis
+
+    def analysis_count(self) -> int:
+        """Return the number of running analyses.
+
+        Returns:
+            int: The number of running analyses.
+        """
+        with self._analysis_lock:
+            return len(self._running_analysis)
 
     def delete_analysis(self, analysis: Analysis) -> bool:
         """Deletes an analysis from the running analyses.

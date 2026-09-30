@@ -8,10 +8,6 @@
   +-----------------------------------------------------------------------+ 
 */
 
-/* =============================================================================
-   SightHouse frontend - Bootstrap theme + app layout
-   ========================================================================== */
-
 /* ---- Palette: SightHouse colors -> Bootstrap theme variables --------------- */
 [data-bs-theme="dark"] {
   --bs-body-bg: #0d1117;
@@ -20,22 +16,24 @@
   --bs-body-color-rgb: 230, 237, 243;
   --bs-emphasis-color: #ffffff;
 
-  --bs-secondary-color: #9aa7b8;
-  --bs-secondary-color-rgb: 154, 167, 184;
-  --bs-secondary: #9aa7b8;
-  --bs-secondary-rgb: 154, 167, 184;
+  /* Muted text, WCAG AA on dark surface */
+  --bs-secondary-color: #aeb9c8;
+  --bs-secondary-color-rgb: 174, 185, 200;
+  --bs-secondary: #aeb9c8;
+  --bs-secondary-rgb: 174, 185, 200;
   --bs-secondary-bg: #161b22;
-  --bs-tertiary-color: #6b7789;
+  --bs-tertiary-color: #8a94a3;
   --bs-tertiary-bg: #161b22;
 
-  --bs-border-color: #2b3648;
+  --bs-border-color: #3a4657;
 
   --bs-primary: #2f81f7;
   --bs-primary-rgb: 47, 129, 247;
-  --bs-link-color: #2f81f7;
-  --bs-link-color-rgb: 47, 129, 247;
-  --bs-link-hover-color: #4c93f8;
-  --bs-link-hover-color-rgb: 76, 147, 248;
+  /* Links lighter than the button fill for contrast */
+  --bs-link-color: #60a5fa;
+  --bs-link-color-rgb: 96, 165, 250;
+  --bs-link-hover-color: #8cc0fb;
+  --bs-link-hover-color-rgb: 140, 192, 251;
 
   --bs-success: #2ea043;
   --bs-success-rgb: 46, 160, 67;
@@ -70,18 +68,37 @@
   --bs-btn-active-color: #fff;
 }
 
-/* Ghost/outline button = app's muted outline. */
+/* Secondary button: soft filled surface */
 .btn-outline-secondary {
-  --bs-btn-color: #9aa7b8;
-  --bs-btn-border-color: #3a475c;
-  --bs-btn-hover-color: #e6edf3;
-  --bs-btn-hover-bg: #263043;
-  --bs-btn-hover-border-color: #3a475c;
-  --bs-btn-active-color: #e6edf3;
-  --bs-btn-active-bg: #263043;
-  --bs-btn-active-border-color: #3a475c;
-  --bs-btn-disabled-color: #9aa7b8;
-  --bs-btn-disabled-border-color: #3a475c;
+  --bs-btn-color: #e6edf3;
+  --bs-btn-bg: #263043;
+  --bs-btn-border-color: #3d4a5f;
+  --bs-btn-hover-color: #ffffff;
+  --bs-btn-hover-bg: #33405a;
+  --bs-btn-hover-border-color: #4a5a72;
+  --bs-btn-active-color: #ffffff;
+  --bs-btn-active-bg: #33405a;
+  --bs-btn-active-border-color: #4a5a72;
+}
+
+/* Danger button: subtle red fill at rest, solid red on hover. */
+.btn-outline-danger {
+  --bs-btn-color: #f8b3ae;
+  --bs-btn-bg: #3a2427;
+  --bs-btn-border-color: #6b2f2f;
+  --bs-btn-hover-color: #ffffff;
+  --bs-btn-hover-bg: #b02a37;
+  --bs-btn-hover-border-color: #b02a37;
+  --bs-btn-active-color: #ffffff;
+  --bs-btn-active-bg: #b02a37;
+  --bs-btn-active-border-color: #b02a37;
+}
+
+.btn-outline-secondary,
+.btn-outline-danger {
+  --bs-btn-disabled-color: #7d8794;
+  --bs-btn-disabled-bg: #1b2230;
+  --bs-btn-disabled-border-color: #33405a;
 }
 
 /* Neutral badges: --bs-secondary-rgb stays light (for muted text), so set the
@@ -118,8 +135,9 @@ body {
   height: 100%;
 }
 
-/* App shell: fixed navbar, then a sidebar/main split that fills the viewport. */
-#app-view {
+/* App shell (app + admin): fixed navbar, then a sidebar/main split */
+#app-view,
+#admin-view {
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -135,11 +153,16 @@ body {
   display: flex;
   flex-direction: column;
 }
-/* Program list scrolls; the "report an issue" footer stays pinned below it. */
-#program-list {
+/* The list scrolls, the footer stays pinned below it */
+#program-list,
+#admin-sections {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+#admin-sections .list-group-item {
+  padding: 0.85rem 1.15rem;
+  font-size: 1rem;
 }
 #main {
   flex: 1;
@@ -193,5 +216,60 @@ body {
 .table th.sortable {
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
+}
+
+/* Visible focus ring on dark */
+.btn:focus-visible,
+.form-control:focus-visible,
+.form-select:focus-visible,
+.form-check-input:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+  box-shadow: none;
+}
+/* Underline links so they don't rely on color alone */
+a:not(.btn):not(.navbar-brand) {
+  text-decoration: underline;
+}
+
+/* Toolbar above the table: count left, search + Add right. */
+.data-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.data-toolbar .spacer {
+  flex: 1;
+}
+
+/* Data table: comfortable rows, legible header. */
+.data-table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--bs-body-color);
+  --bs-table-border-color: var(--bs-border-color);
+  --bs-table-hover-bg: #1b2230;
+  --bs-table-hover-color: var(--bs-body-color);
+  margin-bottom: 0;
+  font-size: 1rem;
+}
+.data-table thead th {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--bs-secondary-color);
+  border-bottom: 2px solid var(--bs-border-color);
+  white-space: nowrap;
+}
+.data-table tbody td,
+.data-table thead th {
+  padding: 0.75rem 1rem;
+  vertical-align: middle;
+}
+.data-table .col-actions {
+  text-align: right;
   white-space: nowrap;
 }

@@ -89,6 +89,20 @@ class Database:
         else:
             raise ValueError(f"Unsupported URI scheme: {self._type}")
 
+    def _table_exists(self, name: str) -> bool:
+        """Whether this database has the given table"""
+        if self._type == "sqlite":
+            rows = self.fetch(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?;", (name,)
+            )
+        else:  # postgres / mysql
+            rows = self.fetch(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_name = lower(?) AND table_schema = current_schema();",
+                (name,),
+            )
+        return len(rows) > 0
+
     def _adapt_query(self, query: str) -> str:
         """
         Convert '?' placeholders in queries to '%s' for PostgreSQL databases.

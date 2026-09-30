@@ -726,6 +726,88 @@ class TestFrontendDatabase(unittest.TestCase):
         fetched = self.db.get_analysis(program1.id, user_id=user2.id)
         self.assertIsNone(fetched)  # Should not find other user's analysis
 
+    # ---------- Roles ----------
+
+    def test_role_round_trips_through_all_reads(self):
+        u = self.db.add_user(
+            User(User.INVALID_ID, f"admin_{secrets.token_hex(8)}", "h", role="admin")
+        )
+        self.assertEqual(u.role, "admin")
+        self.assertEqual(self.db.get_user(u.id).role, "admin")
+        self.assertEqual(self.db.get_user_by_name(u.name).role, "admin")
+        listed = {x.name: x.role for x in self.db.list_users()}
+        self.assertEqual(listed[u.name], "admin")
+
+    def test_role_defaults_to_user(self):
+        u = self.db.add_user(User(User.INVALID_ID, f"u_{secrets.token_hex(8)}", "h"))
+        self.assertEqual(self.db.get_user(u.id).role, "user")
+
+    def test_update_user_changes_role(self):
+        u = self.db.add_user(
+            User(User.INVALID_ID, f"u_{secrets.token_hex(8)}", "h", role="user")
+        )
+        u.role = "admin"
+        self.assertTrue(self.db.update_user(u))
+        self.assertEqual(self.db.get_user(u.id).role, "admin")
+
+    # ---------- Config key/value store ----------
+
+    def test_config_round_trip_and_upsert(self):
+        self.assertIsNone(self.db._get_config_item("missing"))
+        self.db._set_config_item("k", "v1")
+        self.assertEqual(self.db._get_config_item("k"), "v1")
+        self.db._set_config_item("k", "v2")  # upsert overwrites in place
+        self.assertEqual(self.db._get_config_item("k"), "v2")
+
+    # ---------- Schema versioning / migration ----------
+
+    def test_fresh_db_is_stamped_at_current_version(self):
+        self.assertTrue(self.db._table_exists("Config"))
+        self.assertEqual(
+            self.db._get_config_item("database.version"),
+            str(FrontendDatabase.DB_VERSION),
+        )
+
+    def test_legacy_database_is_migrated(self):
+        """A pre-role DB (Users without `role`, no Config) is migrated on open."""
+        import sqlite3
+
+        db_path = Path(self.tmpdir.name) / "legacy.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE Users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, hash TEXT NOT NULL);"
+        )
+        conn.execute(
+            "INSERT INTO Users (name, hash) VALUES (?, ?);", ("legacy", "oldhash")
+        )
+        conn.commit()
+        conn.close()
+
+        migrated = FrontendDatabase(
+            f"sqlite://{db_path}",
+            f"local://{self.tmpdir.name}/legacy_repo/",
+            exist_ok=True,
+        )
+        try:
+            # Config table created and version stamped.
+            self.assertTrue(migrated._table_exists("Config"))
+            self.assertEqual(
+                migrated._get_config_item("database.version"),
+                str(FrontendDatabase.DB_VERSION),
+            )
+            # Pre-existing row survived and got the default role.
+            legacy = migrated.get_user_by_name("legacy")
+            self.assertIsNotNone(legacy)
+            self.assertEqual(legacy.role, "user")
+            # New inserts still work against the migrated schema.
+            created = migrated.add_user(
+                User(User.INVALID_ID, "fresh", "h", role="admin")
+            )
+            self.assertIsNotNone(created)
+            self.assertEqual(migrated.get_user_by_name("fresh").role, "admin")
+        finally:
+            migrated.close()
+
 
 if __name__ == "__main__":
     unittest.main()

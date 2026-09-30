@@ -39,44 +39,17 @@
     { key: "nbMatch", label: "# Matches", type: "num", width: "8%" },
   ];
 
-  // ---------------------------------------------------------------------------
-  // Small DOM helpers
-  // ---------------------------------------------------------------------------
-  const $ = (id) => document.getElementById(id);
-
-  function escapeHtml(value) {
-    // @TODO: Probably not secure enough
-    return String(value == null ? "" : value)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
-
-  // Visibility via Bootstrap's `d-none` utility
-  function show(el) {
-    el.classList.remove("d-none");
-  }
-  function hide(el) {
-    el.classList.add("d-none");
-  }
-
-  const SPINNER = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>';
-
-  // Run an async action with `btn` in a busy state (disabled + spinner label),
-  // always restoring it afterwards. Returns the action's result
-  async function withBusy(btn, label, action) {
-    btn.disabled = true;
-    const original = btn.innerHTML;
-    btn.innerHTML = `${SPINNER} ${label}`;
-    try {
-      return await action();
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = original;
-    }
-  }
+  const {
+    $,
+    escapeHtml,
+    show,
+    hide,
+    setAlert,
+    SPINNER,
+    withBusy,
+    ICON_TRASH,
+    askConfirm,
+  } = UI;
 
   // If `err` is an expired session (401), show the login gate and return true so
   // callers can bail. Centralizes the one auth-handling rule for every catch
@@ -102,21 +75,19 @@
     hide($("login-view"));
     show($("app-view"));
     renderPlaceholder();
-    await refreshSidebar();
+    const [me] = await Promise.all([
+      api.getMe().catch(() => null),
+      refreshSidebar(),
+    ]);
+    // Admin page link for administrators only
+    if (me && me.role === "admin") show($("admin-link"));
+    else hide($("admin-link"));
   }
 
   // ---------------------------------------------------------------------------
   // Login
   // ---------------------------------------------------------------------------
-  function setLoginError(msg) {
-    const box = $("login-error");
-    if (!msg) {
-      hide(box);
-      return;
-    }
-    box.textContent = msg;
-    show(box);
-  }
+  const setLoginError = (msg) => setAlert("login-error", msg);
 
   async function onLoginSubmit(event) {
     event.preventDefault();
@@ -191,9 +162,9 @@
           `<span class="font-monospace text-body-secondary">${escapeHtml(shortHash)}</span>` +
           `</span>` +
           `<button class="btn btn-sm btn-link text-reset p-0 ms-2 program-delete" type="button" data-delete-id="${p.id}" title="Delete program" aria-label="Delete ${escapeHtml(
-            p.name
+            p.name,
           )}">` +
-          `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>` +
+          ICON_TRASH +
           `</button>` +
           `</div>`
         );
@@ -201,26 +172,26 @@
       .join("");
   }
 
-  async function onDeleteProgram(id) {
+  function onDeleteProgram(id) {
     const program = state.programs.find((p) => p.id === id);
     const name = program ? program.name : "this program";
-    if (!window.confirm(`Delete “${name}”? This cannot be undone.`)) return;
+    askConfirm(`Delete “${name}”? This cannot be undone.`, async () => {
+      try {
+        await api.deleteProgram(id);
+      } catch (err) {
+        if (handleAuthError(err)) return;
+        flashError(err.message || "Failed to delete program.");
+        return;
+      }
 
-    try {
-      await api.deleteProgram(id);
-    } catch (err) {
-      if (handleAuthError(err)) return;
-      flashError(err.message || "Failed to delete program.");
-      return;
-    }
-
-    // If the deleted program was open, stop polling and clear the main view
-    if (state.selectedId === id) {
-      state.pollToken++;
-      state.selectedId = null;
-      renderPlaceholder();
-    }
-    await refreshSidebar();
+      // If the deleted program was open, stop polling and clear the main view
+      if (state.selectedId === id) {
+        state.pollToken++;
+        state.selectedId = null;
+        renderPlaceholder();
+      }
+      await refreshSidebar();
+    });
   }
 
   function highlightSidebar(id) {
@@ -316,7 +287,7 @@
       // error text (success messages contain "successfully")
       if (progress && !/successfully/i.test(progress)) {
         return `<div class="alert alert-danger" role="alert">Analysis failed: ${escapeHtml(
-          progress
+          progress,
         )}</div>`;
       }
       return "";
@@ -326,7 +297,7 @@
       `${SPINNER}` +
       `<span>Working...</span>` +
       `<span id="status-progress" class="ms-auto text-body-secondary">${escapeHtml(
-        progress || ""
+        progress || "",
       )}</span>` +
       `</div>`
     );
@@ -347,7 +318,7 @@
         (l) =>
           `<option value="${escapeHtml(l)}"${
             l === program.language ? " selected" : ""
-          }>${escapeHtml(l)}</option>`
+          }>${escapeHtml(l)}</option>`,
       )
       .join("");
 
@@ -366,53 +337,44 @@
       }>Run autoload</button>` +
       `</div>`;
 
-    // Editable memory-layout card: language control + section editor + analyze
-    const layoutCard =
-      `<div class="card mb-3">` +
-      `<div class="card-header d-flex align-items-center justify-content-between">` +
-      `<span class="fw-semibold">Memory layout</span>` +
+    // Memory-layout section: heading + Analyze action
+    const layoutSection =
+      `<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">` +
+      `<h2 class="h5 mb-0">Memory layout</h2>` +
       `<button id="analyze-btn" class="btn btn-primary btn-sm fs-6" type="button"${
         analyzeDisabled ? " disabled" : ""
       }>${analyzing ? "Analyzing..." : "Save &amp; analyze"}</button>` +
       `</div>` +
-      `<div class="card-body">` +
+      `<div class="card mb-4"><div class="card-body">` +
       languageControl +
       `<p class="text-body-secondary">Saving replaces the whole layout, then ` +
       `runs analysis. Use <code>-1</code> as the file offset for uninitialized ` +
       `(BSS) sections; values accept <code>0x</code> hex or decimal.</p>` +
       `<div id="program-sections"></div>` +
-      `</div>` +
-      `</div>`;
+      `</div></div>`;
 
     main.innerHTML =
-      // Header card
-      `<div class="card mb-3">` +
-      `<div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">` +
-      `<h4 class="mb-0 fs-6 fw-semibold">${escapeHtml(program.name)}</h4>` +
-      `<div class="d-flex align-items-center gap-2">` +
+      // Program title
+      `<h1 class="h4 mb-1">${escapeHtml(program.name)}</h1>` +
+      `<div class="d-flex flex-wrap align-items-center gap-2 mb-4">` +
       (langSet
-        ? `<span class="badge text-bg-primary fs-6">${escapeHtml(program.language)}</span>`
-        : `<span class="badge text-bg-warning fs-6">language not set</span>`) +
+        ? `<span class="badge text-bg-primary">${escapeHtml(program.language)}</span>`
+        : `<span class="badge text-bg-warning">language not set</span>`) +
       `<span class="font-monospace text-body-secondary" title="${escapeHtml(hash)}">${escapeHtml(
-        hash || "hash unavailable"
+        hash || "hash unavailable",
       )}</span>` +
       `</div>` +
-      `</div>` +
-      `</div>` +
       banner +
-      layoutCard +
-      // Matches card
-      `<div class="card">` +
-      `<div class="card-header d-flex align-items-center justify-content-between">` +
-      `<span class="fw-semibold">Matches</span>` +
-      `<span id="match-count" class="badge text-bg-secondary fs-6"></span>` +
+      layoutSection +
+      // Matches section: heading + table
+      `<div class="d-flex align-items-center justify-content-between mb-2">` +
+      `<h2 class="h5 mb-0">Matches</h2>` +
+      `<span id="match-count" class="badge text-bg-secondary"></span>` +
       `</div>` +
-      `<div class="overflow-auto" style="max-height: 60vh">` +
-      `<table class="table table-hover table-striped align-middle mb-0 matches-table"><thead>${headMarkup()}</thead>` +
+      `<div class="card"><div class="table-responsive" style="max-height: 60vh">` +
+      `<table class="table table-hover data-table matches-table align-middle mb-0"><thead>${headMarkup()}</thead>` +
       `<tbody id="match-body"></tbody></table>` +
-      `</div>` +
-      `</div>`;
-
+      `</div></div>`;
 
     // Populate the layout editor from the program's sections
     renderSectionsEditor($("program-sections"), program);
@@ -441,7 +403,7 @@
     }
     try {
       await withBusy($("set-language-btn"), "Setting...", () =>
-        api.setLanguage(id, language)
+        api.setLanguage(id, language),
       );
       showProgram(id);
     } catch (err) {
@@ -453,7 +415,9 @@
   // (Re-)run Ghidra's detect pass
   async function onRunAutoload(id) {
     try {
-      await withBusy($("autoload-btn"), "Detecting...", () => api.startAutoload(id));
+      await withBusy($("autoload-btn"), "Detecting...", () =>
+        api.startAutoload(id),
+      );
       showProgram(id); // enter the polling state
     } catch (err) {
       if (handleAuthError(err)) return;
@@ -461,10 +425,10 @@
     }
   }
 
-  // Persist the edited layout 
+  // Persist the edited layout
   async function onAnalyzeProgram(id) {
     const { sections, error } = rowsToSections(
-      readSectionRows($("program-sections"))
+      readSectionRows($("program-sections")),
     );
     if (error) {
       flashError(error);
@@ -472,7 +436,7 @@
     }
     try {
       await withBusy($("analyze-btn"), "Working...", () =>
-        saveLayoutAndAnalyze(id, { sections })
+        saveLayoutAndAnalyze(id, { sections }),
       );
       showProgram(id); // re-render into the polling state
     } catch (err) {
@@ -489,13 +453,11 @@
         const sortable = col.type !== null;
         const isSorted = sortable && state.sort.key === col.key;
         const caret = isSorted ? (state.sort.dir === "asc" ? " ▲" : " ▼") : "";
-        return (
-          `<th class="${sortable ? "sortable" : ""}"${
-            sortable ? ` data-key="${col.key}"` : ""
-          }${col.width ? ` style="width:${col.width}"` : ""}>${escapeHtml(
-            col.label
-          )}${caret}</th>`
-        );
+        return `<th class="${sortable ? "sortable" : ""}"${
+          sortable ? ` data-key="${col.key}"` : ""
+        }${col.width ? ` style="width:${col.width}"` : ""}>${escapeHtml(
+          col.label,
+        )}${caret}</th>`;
       }).join("") +
       "</tr>"
     );
@@ -513,7 +475,8 @@
           state.sort.dir = state.sort.dir === "asc" ? "desc" : "asc";
         } else {
           state.sort.key = key;
-          state.sort.dir = key === "score" || key === "nbMatch" ? "desc" : "asc";
+          state.sort.dir =
+            key === "score" || key === "nbMatch" ? "desc" : "asc";
         }
         renderRows();
       });
@@ -535,15 +498,18 @@
       .map((r) => {
         const sdk = r.sdk.length
           ? r.sdk
-              .map((s) => `<span class="badge text-bg-secondary fs-6 me-1">${escapeHtml(s)}</span>`)
+              .map(
+                (s) =>
+                  `<span class="badge text-bg-secondary fs-6 me-1">${escapeHtml(s)}</span>`,
+              )
               .join("")
           : '<span class="text-body-secondary">-</span>';
         const origin = r.origin
           ? /^https?:\/\//i.test(r.origin)
             ? `<a href="${escapeHtml(
-                r.origin
+                r.origin,
               )}" target="_blank" rel="noopener noreferrer">${escapeHtml(
-                r.origin
+                r.origin,
               )}</a>`
             : escapeHtml(r.origin)
           : '<span class="text-body-secondary">-</span>';
@@ -551,7 +517,7 @@
           r.score == null
             ? '<span class="badge text-bg-secondary fs-6">-</span>'
             : `<span class="badge fs-6 text-bg-secondary">${r.score.toFixed(
-                4
+                4,
               )}</span>`;
         return (
           "<tr>" +
@@ -581,14 +547,14 @@
     $("main").innerHTML = centeredState(
       `<svg class="mb-3 text-secondary" viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>` +
         `<div class="fs-6 text-body">Select a program</div>` +
-        `<div style="max-width: 360px">Pick a program from the sidebar to view its analysis matches, or upload a new one to analyze.</div>`
+        `<div style="max-width: 360px">Pick a program from the sidebar to view its analysis matches, or upload a new one to analyze.</div>`,
     );
   }
 
   function renderLoading() {
     $("main").innerHTML = centeredState(
       `<span class="spinner-border text-primary" role="status" aria-hidden="true"></span>` +
-        `<div class="mt-2">Loading...</div>`
+        `<div class="mt-2">Loading...</div>`,
     );
   }
 
@@ -597,7 +563,7 @@
     $("main").innerHTML = centeredState(
       `<svg class="mb-3 text-danger" viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>` +
         `<div class="fs-6 text-body">Something went wrong</div>` +
-        `<div style="max-width: 360px">${escapeHtml(message)}</div>`
+        `<div style="max-width: 360px">${escapeHtml(message)}</div>`,
     );
   }
 
@@ -830,19 +796,21 @@
   }
 
   function readSectionRows(container) {
-    return Array.from(container.querySelectorAll("[data-section-row]")).map((el) => {
-      const val = (f) => el.querySelector(`[data-f="${f}"]`).value;
-      const checked = (f) => el.querySelector(`[data-f="${f}"]`).checked;
-      return {
-        name: val("name").trim(),
-        start: parseNum(val("start")),
-        size: parseNum(val("size")),
-        offset: parseNum(val("offset")),
-        r: checked("r"),
-        w: checked("w"),
-        x: checked("x"),
-      };
-    });
+    return Array.from(container.querySelectorAll("[data-section-row]")).map(
+      (el) => {
+        const val = (f) => el.querySelector(`[data-f="${f}"]`).value;
+        const checked = (f) => el.querySelector(`[data-f="${f}"]`).checked;
+        return {
+          name: val("name").trim(),
+          start: parseNum(val("start")),
+          size: parseNum(val("size")),
+          offset: parseNum(val("offset")),
+          r: checked("r"),
+          w: checked("w"),
+          x: checked("x"),
+        };
+      },
+    );
   }
 
   // Validate editor rows and convert them to API sections. Returns {sections} or
@@ -898,7 +866,7 @@
       throw new ApiError(
         `A program named “${name}” already exists - enable Force submission or pick another name.`,
         409,
-        null
+        null,
       );
     }
     if (!upload.fileId) upload.fileId = await api.uploadFile(name, file);
@@ -907,7 +875,10 @@
   }
 
   // Persist a reviewed layout onto a program and (re-)run analysis
-  async function saveLayoutAndAnalyze(id, { sections, options, language } = {}) {
+  async function saveLayoutAndAnalyze(
+    id,
+    { sections, options, language } = {},
+  ) {
     if (language) await api.setLanguage(id, language);
     await api.deleteAllSections(id);
     await api.createSections(id, sections);
@@ -924,7 +895,7 @@
     show(box);
   }
 
-  // Fetch + cache the Ghidra language list 
+  // Fetch + cache the Ghidra language list
   async function loadLanguages() {
     if (!state.languages) {
       state.languages = await api.getLanguages();
@@ -945,12 +916,14 @@
     select.innerHTML =
       '<option value="" disabled selected>Select a language...</option>' +
       (state.languages || [])
-        .map((l) => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`)
+        .map(
+          (l) => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`,
+        )
         .join("");
   }
 
   // Auto-detect: upload + create an "auto" program, run Ghidra's detect pass,
-  // then fill the language select + section editor in place 
+  // then fill the language select + section editor in place
   async function onAutodetect() {
     setUploadError("");
     const name = $("upload-name").value.trim();
@@ -965,7 +938,12 @@
     try {
       await withBusy($("autodetect-btn"), "Detecting...", async () => {
         if (!upload.programId) {
-          upload.programId = await ensureProgram({ name, file, language: "auto", force });
+          upload.programId = await ensureProgram({
+            name,
+            file,
+            language: "auto",
+            force,
+          });
           // Name + file are now committed to this program
           $("upload-name").disabled = true;
           $("upload-file").disabled = true;
@@ -985,7 +963,7 @@
           renderSectionsEditor($("upload-sections"), program);
         } else {
           setUploadError(
-            "Couldn't detect the format - set the language and layout manually."
+            "Couldn't detect the format - set the language and layout manually.",
           );
         }
       });
@@ -1050,7 +1028,8 @@
       programId = await withBusy($("upload-submit"), "Working...", async () => {
         // Auto-detect already created the program; otherwise create it now.
         const id =
-          upload.programId || (await ensureProgram({ name, file, language, force }));
+          upload.programId ||
+          (await ensureProgram({ name, file, language, force }));
         await saveLayoutAndAnalyze(id, {
           sections: parsed.sections,
           options,
@@ -1106,7 +1085,7 @@
     $("upload-form").addEventListener("submit", onUploadSubmit);
     $("autodetect-btn").addEventListener("click", onAutodetect);
     $("upload-modal").addEventListener("shown.bs.modal", () =>
-      $("upload-name").focus()
+      $("upload-name").focus(),
     );
 
     // On close: invalidate any in-flight autoload poll
@@ -1115,7 +1094,10 @@
       if (upload.programId && !upload.committed) {
         const orphan = upload.programId;
         upload.programId = null;
-        api.deleteProgram(orphan).then(refreshSidebar).catch(() => {});
+        api
+          .deleteProgram(orphan)
+          .then(refreshSidebar)
+          .catch(() => {});
       }
     });
 
@@ -1139,6 +1121,7 @@
   // ---------------------------------------------------------------------------
   async function boot() {
     bindEvents();
+    // "/" redirects to /setup on a fresh install, so only login or app remain
     let authed = false;
     try {
       authed = await api.checkAuth();

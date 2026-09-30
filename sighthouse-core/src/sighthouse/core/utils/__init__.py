@@ -15,6 +15,18 @@ import zipfile
 
 import requests
 
+# Default port of network URI schemes
+NETWORK_DEFAULT_PORTS = {
+    "postgres": 5432,
+    "postgresql": 5432,
+    "elastic": 5432,
+    "mysql": 3306,
+    "redis": 6379,
+    "rediss": 6379,
+    "amqp": 5672,
+    "amqps": 5672,
+}
+
 
 @functools.cache
 def parse_uri(uri: str) -> Dict[str, Any]:
@@ -38,38 +50,16 @@ def parse_uri(uri: str) -> Dict[str, Any]:
 
         data.update({"database": Path(path).absolute()})
 
-    elif kind in ["postgres", "postgresql"]:
-        # Normalize type
+    elif kind in NETWORK_DEFAULT_PORTS:
         data.update(
             {
-                "type": "postgresql",
+                # Normalize postgres type
+                "type": "postgresql" if kind == "postgres" else kind,
                 "dbname": parsed.path.lstrip("/"),
                 "user": parsed.username,
                 "password": parsed.password,
                 "host": parsed.hostname,
-                "port": parsed.port or 5432,
-            }
-        )
-
-    elif kind in ["elastic"]:
-        data.update(
-            {
-                "dbname": parsed.path.lstrip("/"),
-                "user": parsed.username,
-                "password": parsed.password,
-                "host": parsed.hostname,
-                "port": parsed.port or 5432,
-            }
-        )
-
-    elif kind == "mysql":
-        data.update(
-            {
-                "dbname": parsed.path.lstrip("/"),
-                "user": parsed.username,
-                "password": parsed.password,
-                "host": parsed.hostname,
-                "port": parsed.port or 3306,
+                "port": parsed.port or NETWORK_DEFAULT_PORTS[kind],
             }
         )
 
