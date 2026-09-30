@@ -28,10 +28,20 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Iterator;
+import java.util.stream.Stream;
 
 // Ghidra imports
 import ghidra.app.script.GhidraScript;
 import ghidra.app.util.importer.MessageLog;
+import ghidra.app.util.opinion.LoadResults;
+import ghidra.app.util.importer.AutoImporter;
+import ghidra.formats.gfilesystem.FSRL;
+import ghidra.formats.gfilesystem.FileSystemProbeConflictResolver;
+import ghidra.formats.gfilesystem.FileSystemRef;
+import ghidra.formats.gfilesystem.FileSystemService;
+import ghidra.formats.gfilesystem.GFile;
+import ghidra.formats.gfilesystem.GFileSystem;
+import ghidra.framework.model.Project;
 import ghidra.app.plugin.core.disassembler.EntryPointAnalyzer;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Function;
@@ -178,7 +188,7 @@ class SightHouseDatabase {
     return factory;
   }
 
-  private int getOrInsertString(String table, String value) throws SQLException {
+  public int getOrInsertString(String table, String value) throws SQLException {
     // Insert first, ignoring the row if another worker inserted it concurrently.
     String insert = "INSERT INTO " + table + " (val) VALUES (?) ON CONFLICT (val) DO NOTHING RETURNING id";
     try (PreparedStatement pstmt = this.connection.prepareStatement(insert)) {
@@ -406,6 +416,135 @@ public class SightHouseAnalyzerScript extends GhidraScript {
 
   private static final int EXIT_CODE_ERROR = 1;
 
+  private static int u8(byte[] b, int i) {
+    return b[i] & 0xFF;
+  }
+
+  public boolean isArchive(Path path) throws IOException {
+    // "!<arch>\n" magic of a Unix ar archive (.a on Unix, .lib on Windows)
+    byte[] ar_magic = { '!', '<', 'a', 'r', 'c', 'h', '>', '\n' };
+    try (FileInputStream fis = new FileInputStream(path.toFile())) {
+      byte[] header = new byte[ar_magic.length];
+      int bytesRead = fis.read(header);
+      if (bytesRead < ar_magic.length) {
+        return false;
+      }
+      for (int i = 0; i < ar_magic.length; i++) {
+        if (header[i] != ar_magic[i]) {
+          return false;
+        }
+      }
+      return true;
+    } catch (Exception e) {
+      // pass
+    }
+    return false;
+  }
+
+  public boolean needAnalysis(Path path) throws IOException {
+    try (FileInputStream fis = new FileInputStream(path.toFile())) {
+      byte[] header = new byte[4096];
+      int bytesRead = fis.read(header);
+      if (bytesRead < 4) {
+        return false;
+      }
+
+      // ELF
+      if (u8(header, 0) == 0x7F && u8(header, 1) == 0x45 && u8(header, 2) == 0x4C && u8(header, 3) == 0x46) {
+        return true;
+      }
+
+      // PE: e_lfanew is a little-endian 32-bit offset stored at 0x3C
+      if (u8(header, 0) == 0x4D && u8(header, 1) == 0x5A && bytesRead >= 0x40) {
+        int peOffset = u8(header, 0x3C)
+                     | (u8(header, 0x3D) << 8)
+                     | (u8(header, 0x3E) << 16)
+                     | (u8(header, 0x3F) << 24);
+        if (peOffset >= 0x40 && peOffset + 4 <= bytesRead
+            && u8(header, peOffset) == 0x50 && u8(header, peOffset + 1) == 0x45
+            && u8(header, peOffset + 2) == 0x00 && u8(header, peOffset + 3) == 0x00) {
+          return true;
+        }
+      }
+
+      // Mach-O 32/64-bit, both byte orders
+      int m0 = u8(header, 0), m1 = u8(header, 1), m2 = u8(header, 2), m3 = u8(header, 3);
+      if ((m0 == 0xCF || m0 == 0xCE) && m1 == 0xFA && m2 == 0xED && m3 == 0xFE) {
+        return true; // little-endian FEEDFACE / FEEDFACF
+      }
+      if (m0 == 0xFE && m1 == 0xED && m2 == 0xFA && (m3 == 0xCE || m3 == 0xCF)) {
+        return true; // big-endian
+      }
+    }
+    return false;
+  }
+
+  // Opens the archive as a Ghidra file system (the FileFormats "ar" file system)
+  private void analyzeArchive(Path path, SightHouseConfiguration config) throws Exception {
+    FileSystemService fsService = FileSystemService.getInstance();
+    FSRL archiveFsrl = fsService.getLocalFSRL(path.toFile());
+
+    try (FileSystemRef fsRef = fsService.probeFileForFilesystem(
+        archiveFsrl, this.monitor, FileSystemProbeConflictResolver.CHOOSEFIRST)) {
+      if (fsRef == null) {
+        Msg.warn(this, "No file system found for archive, skipping: " + path);
+        return;
+      }
+      GFileSystem fs = fsRef.getFilesystem();
+      String projectFolder = "/" + path.getFileName().toString();
+      Msg.info(this, "Importing archive " + path + " into " + projectFolder);
+      this.importArchiveDirectory(fs, null, projectFolder, config);
+    }
+  }
+
+  // Walks the archive listing; dir == null means the archive root.
+  private void importArchiveDirectory(GFileSystem fs, GFile dir, String projectFolder, SightHouseConfiguration config) throws IOException {
+    for (GFile member : fs.getListing(dir)) {
+      if (this.monitor.isCancelled()) {
+        break;
+      }
+      if (member.isDirectory()) {
+        // Recursive import
+        this.importArchiveDirectory(fs, member, projectFolder + "/" + member.getName(), config);
+      } else {
+        // Import member
+        this.importArchiveMember(member.getFSRL(), projectFolder, config);
+      }
+    }
+  }
+
+  private void importArchiveMember(FSRL memberFsrl, String projectFolder, SightHouseConfiguration config) {
+    Project project = state.getProject();
+    MessageLog log = new MessageLog();
+    LoadResults<Program> results = null;
+
+    try {
+      results = AutoImporter.importByUsingBestGuess(
+          memberFsrl, project, projectFolder, this, log, this.monitor);
+
+      // Store the imported program(s) in the project folder of the archive
+      results.save(project, this, log, this.monitor);
+
+      Program pr = results.getPrimaryDomainObject();
+      this.decompileFunctions(pr);
+      // Demangle symbol names before collecting signatures
+      this.demangleProgram(pr);
+      Msg.info(this, "Archive member was analyzed: " + memberFsrl.getName());
+      // Add signatures (BSIM + FIDB) to the database
+      this.addProgramToSightHouseDatabase(pr, config);
+    } catch (Exception e) {
+      // One bad member (e.g. unsupported architecture) must not abort the whole archive
+      Msg.warn(this, "Failed to import archive member " + memberFsrl + ": " + e.getMessage());
+    } finally {
+      if (results != null) {
+        results.release(this);
+      }
+      if (log.hasMessages()) {
+        Msg.info(this, log.toString());
+      }
+    }
+  }
+
   private static List<Function> filterFunctionOnInstructionCount(Map<Function, Integer> counts, int min, int max) {
     List<Function> filtered = new ArrayList<>();
     for (Map.Entry<Function, Integer> entry: counts.entrySet()) {
@@ -416,41 +555,6 @@ public class SightHouseAnalyzerScript extends GhidraScript {
     }
     return filtered;
   }
-
-  public boolean needAnalysis(String filePath) throws IOException {
-    try (FileInputStream fis = new FileInputStream(filePath)) {
-      byte[] header = new byte[16];
-      int bytesRead = fis.read(header);
-      if (bytesRead < 4) {
-        return false;
-      }
-
-      // Check for ELF
-      if (header[0] == 0x7F && header[1] == 'E' && header[2] == 'L' && header[3] == 'F') {
-        return true;
-      }
-
-      // Check for PE
-      if (header[0] == 'M' && header[1] == 'Z') {
-        if (bytesRead >= 20 && header[0x3C] + 0x3C < bytesRead) {
-          int peHeaderOffset = header[0x3C] + 0x3C;
-          if (header[peHeaderOffset] == 'P' && header[peHeaderOffset + 1] == 'E' &&
-              header[peHeaderOffset + 2] == 0x00 && header[peHeaderOffset + 3] == 0x00) {
-            return true;
-          }
-        }
-      }
-
-      // Check for Mach-O
-      if (header[0] == (byte) 0xCF && header[1] == (byte) 0xFA && header[2] == (byte) 0xED && header[3] == (byte) 0xFE) {
-        return true;
-      } else if (header[0] == (byte) 0xCE && header[1] == (byte) 0xFA && header[2] == (byte) 0xED && header[3] == (byte) 0xFE) {
-        return true;
-      }
-    }
-    return false;
-  }
-
 
   // Read a string field from a JSON object, returning "" when absent or null.
   private static String jsonString(JsonObject obj, String key) {
@@ -610,7 +714,7 @@ public class SightHouseAnalyzerScript extends GhidraScript {
     try {
       gensig.setVectorFactory(vectorFactory);
       gensig.openProgram(prgm, null, null, null, null, null);
-      gensig.scanFunctions(funcs.iterator(), funcs.size(), monitor);
+      gensig.scanFunctions(funcs.iterator(), funcs.size(), this.monitor);
       DescriptionManager manager = gensig.getDescriptionManager();
       Iterator<FunctionDescription> it = manager.listAllFunctions();
       while (it.hasNext()) {
@@ -655,7 +759,7 @@ public class SightHouseAnalyzerScript extends GhidraScript {
       int transaction = prgm.startTransaction("Demangle");
       try {
         DemanglerCmd cmd = new DemanglerCmd(f.getEntryPoint(), mangled, new DemanglerOptions());
-        cmd.applyTo(prgm, monitor);
+        cmd.applyTo(prgm, this.monitor);
       } catch (Exception e) {
         // Demangling is best-effort; leave names that cannot be demangled untouched.
       } finally {
@@ -678,56 +782,58 @@ public class SightHouseAnalyzerScript extends GhidraScript {
 
   private int decompileFunctions(Program prgm) {
     FunctionManager functionManager = prgm.getFunctionManager();
-    // Save program before analysis
-    try {
-      this.saveProgram(prgm);
-    } catch (DuplicateFileException e) {
-      Msg.info(this, "DecompileFunctions: program " + prgm.getName() + " already addded");
-    } catch (Exception e) {
-      e.printStackTrace();
-      return 0;
-    }
 
-    for (Function f: functionManager.getFunctions(true)) {
-      if (f.isThunk()) { continue; }
+    for (Function f : functionManager.getFunctions(true)) {
+      if (this.monitor.isCancelled()) {
+        break;
+      }
+      if (f.isThunk()) {
+        continue;
+      }
       int transaction = prgm.startTransaction("Disassemble");
-
       EntryPointAnalyzer analyzer = new EntryPointAnalyzer();
       MessageLog log = new MessageLog();
       try {
-        analyzer.added(prgm, f.getBody(), monitor, log);
+        analyzer.added(prgm, f.getBody(), this.monitor, log);
       } catch (CancelledException e) {
         e.printStackTrace();
+      } finally {
+        prgm.endTransaction(transaction, true);
       }
-
-      prgm.endTransaction(transaction, true);
-    }
-    // Save program after analysis 
-    try {
-      this.saveProgram(prgm);
-    } catch (Exception e) {
-      e.printStackTrace();
-      return 0;
     }
     return functionManager.getFunctionCount();
   }
 
   public void analyzeOneProgram(Path path, SightHouseConfiguration config) throws Exception {
-    if (!this.needAnalysis(path.toAbsolutePath().toString())) {
-      Msg.warn(this, "File format is unknown, skipping analysis");
+    if (this.isArchive(path)) {
+      this.analyzeArchive(path, config);
+      return;
+    }
+
+    if (!this.needAnalysis(path)) {
+      Msg.warn(this, "File format is unknown, skipping analysis: " + path);
       return;
     }
     Program pr = this.importFile(path.toFile());
     if (pr == null) {
-      Msg.error(this, String.format("Fail to import program: Auto-Importer failed to import program '%s'. "+ 
-                            "This is likely due to unsupported architecture!", path));
+      Msg.error(this, String.format("Fail to import program: Auto-Importer failed to import program '%s'. " +
+                                    "This is likely due to unsupported architecture!", path));
       return;
-    } 
+    }
     // Open and analyze program
     this.openProgram(pr);
+    // Save program before analysis
+    try {
+      this.saveProgram(pr);
+    } catch (DuplicateFileException e) {
+      Msg.info(this, "Program " + pr.getName() + " already added");
+    }
     this.decompileFunctions(pr);
     // Demangle symbol names before collecting signatures
     this.demangleProgram(pr);
+    // Save program after analysis
+    this.saveProgram(pr);
+    Msg.info(this, "Program was analyzed: " + path);
     // Add signatures (BSIM + FIDB) to the database
     this.addProgramToSightHouseDatabase(pr, config);
 
@@ -739,19 +845,25 @@ public class SightHouseAnalyzerScript extends GhidraScript {
   }
 
   public void analyzeMultipleProgram(String directory, SightHouseConfiguration config) throws Exception {
-    java.nio.file.Path p = Paths.get(directory);
+    Path p = Paths.get(directory);
     if (Files.isRegularFile(p)) {
       // Analyze a simple program (only one entry)
       this.analyzeOneProgram(p, config);
       return;
     }
 
-    for (java.nio.file.Path path : Files.list(p).toList()) {
+    List<Path> entries;
+    try (Stream<Path> stream = Files.list(p)) {
+      entries = stream.toList();
+    }
+    for (Path path : entries) {
+      if (this.monitor.isCancelled()) {
+        break;
+      }
       if (Files.isRegularFile(path)) {
         // Analyze a simple program
         this.analyzeOneProgram(path, config);
-      }
-      else if (Files.isDirectory(path)) {
+      } else if (Files.isDirectory(path)) {
         // Do recursive analysis
         this.analyzeMultipleProgram(path.toAbsolutePath().toString(), config);
       }
@@ -769,6 +881,7 @@ public class SightHouseAnalyzerScript extends GhidraScript {
       // Analyse all programs
       this.analyzeMultipleProgram(config.getDirectory(), config);
     } catch (Exception e) {
+      Msg.error(this, "Analysis failed", e);
       e.printStackTrace();
       System.exit(EXIT_CODE_ERROR);
     }
