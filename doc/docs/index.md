@@ -57,3 +57,12 @@ database with the [Signature Pipeline](signature-pipeline/quickstart.md) and ser
 Want to know how the pipeline, frontend, and clients fit together internally? See the
 [Architecture](architecture.md) page.
 
+## Changelog
+
+- **1.0.6**: Add the SightHouse web panel; add server-side Function ID support; revamp BobRoss; improve documentation.
+- **1.0.5**: Migrate object storage from MinIO to RustFS; improve test suite.
+- **1.0.4**: Improve Docker Compose setup and deployment scripts.
+- **1.0.3**: Update Docker images.
+- **1.0.2**: Improve the client installer.
+- **1.0.1**: Improve documentation.
+- **1.0.0**: First public release of SightHouse.

@@ -4,7 +4,7 @@ from typing import Any, Optional
 from pathlib import Path
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 from sighthouse.core.utils import parse_uri, download_file  # type: ignore[import-untyped]
 
@@ -92,11 +92,15 @@ class Repo:
                 fp.write(content)
 
         elif self._uri["type"] == "s3":
-            self._client.put_object(
-                Bucket=self._uri["dbname"],
-                Key=self._s3_key(upload_path),
-                Body=content,
-            )
+            try:
+                self._client.put_object(
+                    Bucket=self._uri["dbname"],
+                    Key=self._s3_key(upload_path),
+                    Body=content,
+                )
+            except EndpointConnectionError:
+                # @TODO: Maybe find a way to indicate the error reason
+                return False
 
         else:
             raise ValueError(f"Unsupported URI scheme: {self._uri.get('type')}")
@@ -137,10 +141,14 @@ class Repo:
                     break
 
         elif self._uri["type"] == "s3":
-            self._client.delete_object(
-                Bucket=self._uri["dbname"],
-                Key=self._s3_key(upload_path),
-            )
+            try:
+                self._client.delete_object(
+                    Bucket=self._uri["dbname"],
+                    Key=self._s3_key(upload_path),
+                )
+            except EndpointConnectionError:
+                # @TODO: Maybe find a way to indicate the error reason
+                return
 
         else:
             raise ValueError(f"Unsupported URI scheme: {self._uri.get('type')}")
@@ -182,6 +190,9 @@ class Repo:
                     Bucket=self._uri["dbname"],
                     Key=self._s3_key(upload_path),
                 )
+            except EndpointConnectionError:
+                # @TODO: Maybe find a way to indicate the error reason
+                return None
             except ClientError as exc:
                 if exc.response["Error"]["Code"] in ("NoSuchKey", "404"):
                     return None
@@ -224,13 +235,17 @@ class Repo:
             return list(map(str, full_path.iterdir()))
 
         if self._uri["type"] == "s3":
-            paginator = self._client.get_paginator("list_objects_v2")
-            keys: list[str] = []
-            for page in paginator.paginate(
-                Bucket=self._uri["dbname"], Prefix=str(path).lstrip("/")
-            ):
-                keys.extend(obj["Key"] for obj in page.get("Contents", []))
-            return keys
+            try:
+                paginator = self._client.get_paginator("list_objects_v2")
+                keys: list[str] = []
+                for page in paginator.paginate(
+                    Bucket=self._uri["dbname"], Prefix=str(path).lstrip("/")
+                ):
+                    keys.extend(obj["Key"] for obj in page.get("Contents", []))
+                return keys
+            except EndpointConnectionError:
+                # @TODO: Maybe find a way to indicate the error reason
+                return []
 
         raise ValueError(f"Unsupported URI scheme: {self._uri.get('type')}")
 
@@ -265,13 +280,17 @@ class Repo:
             return full_path.absolute().as_posix()
 
         if self._uri["type"] == "s3":
-            return self._client.generate_presigned_url(
-                "get_object",
-                Params={
-                    "Bucket": self._uri["dbname"],
-                    "Key": self._s3_key(upload_path),
-                },
-            )
+            try:
+                return self._client.generate_presigned_url(
+                    "get_object",
+                    Params={
+                        "Bucket": self._uri["dbname"],
+                        "Key": self._s3_key(upload_path),
+                    },
+                )
+            except EndpointConnectionError:
+                # @TODO: Maybe find a way to indicate the error reason
+                return ""  # Will fail when used with download_sharefile
 
         raise ValueError(f"Unsupported URI scheme: {self._uri.get('type')}")
 

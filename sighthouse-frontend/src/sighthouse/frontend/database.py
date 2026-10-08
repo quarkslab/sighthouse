@@ -491,11 +491,21 @@ class FrontendDatabase(Database):
                 code=409,
             )
 
+        if not self.__push_file(file):
+            raise RestError(
+                {
+                    "error": "Internal server error",
+                },
+                code=500,
+            )
+
         file_id = self.execute(
             "INSERT INTO File (name, user_id, hash) VALUES (?, ?, ?);",
             (file.name, file.user, file.hash),
         )
         if file_id is None:
+            # Delete file after failed insertion
+            self.__delete_file(file)
             raise RestError(
                 {
                     "error": "Internal server error",
@@ -504,16 +514,7 @@ class FrontendDatabase(Database):
             )
 
         file.id = file_id
-        if self.__push_file(file):
-            return file
-
-        # @TODO: remove from SQL if failed to push file
-        raise RestError(
-            {
-                "error": "Internal server error",
-            },
-            code=500,
-        )
+        return file
 
     def get_file_user(
         self, file_id: int, user_id: Optional[int] = None

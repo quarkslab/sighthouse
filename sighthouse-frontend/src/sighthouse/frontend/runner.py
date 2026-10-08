@@ -211,6 +211,9 @@ class Worker:
         )
         def frontend_task(job_data: dict) -> str:
             self.logger.info(job_data)
+            program_id = job_data["program"]
+            client = LocalApiClient(self.logger)
+
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir)
                 binary_path = temp_path / "binary.bin"
@@ -224,7 +227,10 @@ class Worker:
                 if not isinstance(binary_data, bytes) or not isinstance(
                     config_data, bytes
                 ):
-                    return "Failure"
+                    client.update_status(
+                        program_id, "finished", "Failed to download binary"
+                    )
+                    return "Failure: Failed to download binary"
 
                 config = json.loads(config_data)
                 config.update(
@@ -243,13 +249,12 @@ class Worker:
                 with open(config_path, "w", encoding="utf-8") as fp:
                     json.dump(config, fp)
 
-                client = LocalApiClient(self.logger)
                 if self.__signature_search(config, temp_path) != 0:
                     # Analysis failed
                     with open(error_path, "r", encoding="utf-8") as fp:
                         error = fp.read()
-                        client.update_status(config["program"]["id"], "finished", error)
-                        return "Failure"
+                        client.update_status(program_id, "finished", error)
+                        return f"Failure: {error}"
 
                 # Analysis succeed, load program
                 with open(output_path, "r", encoding="utf-8") as fp:
@@ -286,7 +291,7 @@ class Worker:
                             )
 
                 client.update_status(
-                    config["program"]["id"], "finished", "Analysis successfully ended"
+                    program_id, "finished", "Analysis successfully ended"
                 )
 
             return "Success"
@@ -311,7 +316,7 @@ class Worker:
                     client.update_status(
                         program_id, "finished", "Failed to download binary"
                     )
-                    return "Failure"
+                    return "Failure: Failed to download binary"
 
                 with open(binary_path, "wb") as fp:
                     fp.write(binary_data)
@@ -337,7 +342,7 @@ class Worker:
                     except OSError:
                         pass
                     client.update_status(program_id, "finished", error)
-                    return "Failure"
+                    return f"Failure: {error}"
 
                 # Any failure reading the result or pushing it back must still mark
                 # the analysis finished, otherwise the program is stuck "pending".
@@ -354,7 +359,7 @@ class Worker:
                     client.update_status(
                         program_id, "finished", f"Autoload failed to persist: {e}"
                     )
-                    return "Failure"
+                    return f"Failure: Autoload failed to persist: {e}"
 
                 client.update_status(
                     program_id, "finished", "Autoload successfully ended"

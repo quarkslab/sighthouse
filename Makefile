@@ -1,4 +1,4 @@
-VERSION = 1.0.5
+VERSION = 1.0.6
 
 default: help
 
@@ -146,5 +146,5 @@ clean: # Clean build artefacts
 	@find . -name '.mypy_cache' -type d -exec rm -rf {} +
 	@find . -name '.pytest_cache' -type d -exec rm -rf {} +
 	@$(RM) -rf dist build sighthouse-pipeline/build sighthouse-frontend/build sighthouse-core/build \
-						sighthouse-client/build htmlcov .coverage
+						sighthouse-client/build sighthouse-cli/build htmlcov .coverage
 	

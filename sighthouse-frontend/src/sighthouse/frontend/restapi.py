@@ -1130,16 +1130,9 @@ class FrontendRestAPI(ServerThread):
             fidb_opts = self.__config.fidb_config.to_dict()
             config = {
                 "program": self.__jsonify_program(program),
-                "bsim": {
-                    "enabled": True,
-                    "databases": build_analysis_databases(bsim_opts.pop("urls")),
-                    **bsim_opts,
-                },
-                "fidb": {
-                    "enabled": True,
-                    "databases": build_analysis_databases(fidb_opts.pop("urls")),
-                    **fidb_opts,
-                },
+                "databases": build_analysis_databases(bsim_opts.pop("urls")),
+                "bsim": bsim_opts,
+                "fidb": fidb_opts,
             }
             upload_file_config = (
                 self.__database.get_upload_dir(program.user)
@@ -1166,6 +1159,7 @@ class FrontendRestAPI(ServerThread):
                 queue="frontendanalyzer",
                 kwargs={
                     "job_data": {
+                        "program": program.id,
                         "binary": str(sharefile),
                         "config": str(
                             self.__database.require_repo().get_sharefile(

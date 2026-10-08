@@ -30,7 +30,7 @@ services:
       - ./data/postgres:/home/user/ghidra-data
 
   sighthouse_frontend:
-    image: ghcr.io/quarkslab/sighthouse/sighthouse-frontend:1.0.5
+    image: ghcr.io/quarkslab/sighthouse/sighthouse-frontend:1.0.6
     command: >
       frontend start
       -g /ghidra -d sqlite:////data/frontend.db
