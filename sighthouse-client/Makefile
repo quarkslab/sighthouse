@@ -13,7 +13,7 @@ JLfAs7L7OOIv6GE89ocP8HmA5/0OR/je/x7g2D/3xwEOP1++/djB1/0RdvtX+PIywusA/dPTcBjh\
 default: help
 
 help: # Show help for each of the Makefile recipes.
-	@grep -E '^[a-zA-Z0-9 -]+:.*#'  Makefile | sort | while read -r l; do printf "\033[1;32m$$(echo $$l | cut -f 1 -d':')\033[00m:$$(echo $$l | cut -f 2- -d'#')\n"; done
+	@grep -E '^[a-zA-Z0-9_ -]+:.*#'  Makefile | sort | while read -r l; do printf "\033[1;32m$$(echo $$l | cut -f 1 -d':')\033[00m:$$(echo $$l | cut -f 2- -d'#')\n"; done
 
 lint: # Format with black and lint with ruff.
 	@echo "[+] Linting"
@@ -38,9 +38,8 @@ install_ghidra: # Install Sighthouse Ghidra client on your system
 install_ghidra:check-env-ghidra
 	@python src/sighthouse/client/install_ghidra.py $(GHIDRA_INSTALL_DIR)
 
-install_ida: # Install Sighthouse Ida client on your system
-install_ida:check-env-ida
-	@python src/sighthouse/client/install_ida.py $(IDA_DIR)
+install_ida: # Install Sighthouse Ida client on your system (IDA_DIR is optional)
+	@python src/sighthouse/client/install_ida.py $(if $(IDA_DIR),--ida-dir "$(IDA_DIR)")
 
 install_binja: # Install Sighthouse Binary Ninja client on your system
 	@python src/sighthouse/client/install_binja.py
@@ -52,9 +51,3 @@ check-env-ghidra:
 ifndef GHIDRA_INSTALL_DIR
 	$(error GHIDRA_INSTALL_DIR is undefined)
 endif
-
-check-env-ida:
-ifndef IDA_DIR
-	$(error IDA_DIR is undefined)
-endif
-	

@@ -93,7 +93,11 @@ def version_tuple(v):
 
 def install(
     install_dir: Path, python_cmd: str, pip_args: List[str], offer_venv: bool
-) -> bool:
+) -> str | None:
+    """Run pip, optionally offering to create a venv first.
+
+    Returns the interpreter that was used, or None if the user declined.
+    """
     if offer_venv:
         ghidra_venv_choice: str = input(
             "Install into new Ghidra virtual environment (Y/n)? "
@@ -418,7 +422,7 @@ def copy_client_script(install_dir: Path) -> None:
 def main(install_dir: str) -> None:
     # Setup variables
     install_dir = Path(install_dir)
-    python_cmd: str = sys.executable
+    python_cmd: str | None = sys.executable
     pyghidra_dir: Path = install_dir / "Ghidra" / "Features" / "PyGhidra"
     dist_dir: Path = pyghidra_dir / "pypkg" / "dist"
 
@@ -469,7 +473,8 @@ def main(install_dir: str) -> None:
         "--force-reinstall",
         "sighthouse.client",
     ]
-    if not install(install_dir, python_cmd, pip_args_sighthouse, offer_venv):
+    # Reuse the environment chosen above instead of asking (and creating a venv) again
+    if not install(install_dir, python_cmd, pip_args_sighthouse, offer_venv=False):
         sys.exit(1)
 
     # Copy client script
