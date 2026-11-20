@@ -137,6 +137,7 @@ make test      # run the unit test
 
 ## Changelog
 
+- **1.0.7**: Improve documentation for SightHouse packages and fix S3 listing.
 - **1.0.6**: Add the SightHouse web panel; add server-side Function ID support; revamp BobRoss; improve documentation.
 - **1.0.5**: Migrate object storage from MinIO to RustFS; improve test suite.
 - **1.0.4**: Improve Docker Compose setup and deployment scripts.
