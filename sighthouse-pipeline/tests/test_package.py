@@ -157,13 +157,13 @@ class TestPackageLoader(unittest.TestCase):
         # A module shipped under CORE_MODULES_PATH can be installed by bare name
         bundled = self.coredir / "BundledWorker"
         bundled.mkdir()
-        self._write_package_yml(bundled, "name: bundledworker\nversion: 1.0.0\n")
+        self._write_package_yml(bundled, "name: bundled worker\nversion: 1.0.0\n")
 
-        meta = self.loader.install("BundledWorker")
+        meta = self.loader.install("bundled worker")
         # install() returns the installed package's metadata
         self.assertIsNotNone(meta)
-        self.assertEqual(meta.name, "bundledworker")
-        self.assertTrue((self.tmpdir / "bundledworker").exists())
+        self.assertEqual(meta.name, "bundled worker")
+        self.assertTrue((self.coredir / "BundledWorker").exists())
 
     # ---- resolve_source tests ----
 
@@ -178,18 +178,6 @@ class TestPackageLoader(unittest.TestCase):
         result = self.loader._resolve_source(str(pkg_dir))
         self.assertIsInstance(result, Path)
         self.assertEqual(result, pkg_dir)
-
-    def test_resolve_source_falls_back_to_bundled_core_module(self):
-        (self.coredir / "FakeModule").mkdir()
-        result = self.loader._resolve_source("FakeModule")
-        self.assertEqual(result, self.coredir / "FakeModule")
-
-    def test_resolve_source_uses_basename_for_bundled_lookup(self):
-        # A non-existent path whose final component matches a bundled module
-        # still resolves to the bundled module.
-        (self.coredir / "FakeModule").mkdir()
-        result = self.loader._resolve_source("does/not/exist/FakeModule")
-        self.assertEqual(result, self.coredir / "FakeModule")
 
     def test_resolve_source_existing_path_takes_precedence_over_bundled(self):
         # A real filesystem path wins even if a bundled module shares its name.

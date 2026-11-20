@@ -1,3 +1,27 @@
+"""
+The LinuxKernelCompiler is a very naive kernel compiler that will attempt to compile the
+Linux kernel sources on a best-effort basis. It will first run `make defconfig`, then
+attempt to compile using `make all`.
+
+The worker accepts the following arguments:
+```
+args:
+  compiler_variants:
+    <name>:
+      cc: ...
+      cflags: ...
+```
+
+Here is an example:
+```
+args:
+  compiler_variants:
+    aarch64-O0:
+      cc: aarch64-linux-gnu-gcc
+      cflags: -O0
+```
+"""
+
 from typing import Dict, List, Tuple
 from tempfile import TemporaryDirectory
 from argparse import ArgumentParser

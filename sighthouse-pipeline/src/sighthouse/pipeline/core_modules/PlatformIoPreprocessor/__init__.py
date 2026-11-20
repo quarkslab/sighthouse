@@ -1,3 +1,10 @@
+"""
+The PlatformIoPreprocessor is a preprocessor module intended for PlatformIO, but it is currently
+a work in progress.
+
+The worker doesn't need any arguments.
+"""
+
 from tempfile import TemporaryDirectory
 from argparse import ArgumentParser
 from pathlib import Path

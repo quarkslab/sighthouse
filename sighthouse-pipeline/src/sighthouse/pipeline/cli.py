@@ -87,9 +87,24 @@ def list_package_cmd_handler(self, args: Namespace, remaining: List[str]) -> Non
     basicConfig(level=INFO if not args.debug else DEBUG)
     logger = getLogger(__name__)
     loader = PackageLoader(logger)
-    modules = loader.list_modules()
-    for meta in modules:
-        print(f"{meta} — {meta.description}")
+    modules = loader.list_modules(not args.all)
+    lines = [["Installed", "Name", "Version", "Description"]]
+    lines += [
+        [
+            "Yes" if loader.is_installed(meta) else "No",
+            meta.name,
+            meta.version,
+            meta.description,
+        ]
+        for meta in modules
+    ]
+    # Pretty print in table
+    col_widths = [max(len(str(item)) for item in col) for col in zip(*lines)]
+    for row in lines:
+        row_str = ""
+        for i, item in enumerate(row):
+            row_str += str(item).ljust(col_widths[i] + 2)
+        print(row_str)
 
 
 def export_package_cmd_handler(self, args: Namespace, remaining: List[str]) -> None:
@@ -239,9 +254,17 @@ def add_to_cli(app: SightHouseCommandLine) -> None:
                 "and run (e.g. GhidraAnalyzer)",
             )
 
-        parser_package.add_command(
+        parser_package_list = parser_package.add_command(
             "list", list_package_cmd_handler, help="List %(prog)s packages"
         )
+        if parser_package_list is not None:
+            parser_package_list.add_argument(
+                "-a",
+                "--all",
+                action="store_true",
+                help="List all packages, including the core ones",
+            )
+
         parser_package_export = parser_package.add_command(
             "export", export_package_cmd_handler, help="Export %(prog)s packages"
         )

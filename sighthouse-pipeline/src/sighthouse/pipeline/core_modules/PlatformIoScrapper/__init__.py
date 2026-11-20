@@ -1,3 +1,15 @@
+"""
+The PlatformIoScrapper is a scraper relying on the PlatformIO build system (`pio`).
+PlatformIO is a software aggregator platform for embedded projects.
+
+The worker doesn't need any arguments.
+
+The worker can be run with or without indexing. If enabled, it will periodically poll PlatformIO
+for new packages to scrape and store them in its internal database before sending them into the
+pipeline. If indexing is off, it will send any projects from the internal database that weren't
+already sent, and then stop.
+"""
+
 from argparse import ArgumentParser
 from dateutil import parser, tz
 from time import time, sleep

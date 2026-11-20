@@ -1,3 +1,27 @@
+"""
+The uClibcCompiler is a compiler module that will attempt to build uClibc. It expects the sources
+to contain kernel headers corresponding to the targeted architecture. These headers should have
+been retrieved using the uClibcPreprocessor.
+
+The worker accepts the following arguments:
+```
+args:
+  compiler_variants:
+    <name>:
+      cc: ...
+      cflags: ...
+```
+
+Here is an example:
+```
+args:
+  compiler_variants:
+    arm-O1:
+      cc: arm-linux-gnueabi-gcc
+      cflags: -O1
+```
+"""
+
 from typing import Dict, List, Tuple
 from tempfile import TemporaryDirectory
 from argparse import ArgumentParser

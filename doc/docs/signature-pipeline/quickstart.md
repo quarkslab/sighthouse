@@ -37,16 +37,12 @@ Running the signature pipeline involves the following steps:
 
 3. **Start each package**: Once installed, a package can be started using the command: 
    `sighthouse package run "Name of the package"`. 
-   To query installed packages, you can use the following command: `sighthouse package list`.
+   To query installed packages, you can use the following command: `sighthouse package list -a`.
 
 4. **Query and inspect the pipeline**: The health of the pipeline can be monitored using various commands
    present under `sighthouse pipeline ...`. 
 
-## Available Packages 
-
-For now, the following packages are available:
-
-{% generate_package_table %}
+For a full description of all the available workers, checkout [here](packages.md).
 
 ## Deploy using Docker 
 

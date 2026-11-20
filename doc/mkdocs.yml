@@ -99,6 +99,7 @@ nav:
     - Signature Pipeline:
       - Installation: signature-pipeline/installation.md
       - Quickstart: signature-pipeline/quickstart.md
+      - Packages: signature-pipeline/packages.md
     - FAQ: faq.md
   - For Developers:
     - Architecture: architecture.md

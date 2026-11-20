@@ -1,3 +1,10 @@
+"""
+The uClibcPreprocessor is a preprocessor module that will download the kernel headers required
+for building uClibc.
+
+The worker doesn't need any arguments.
+"""
+
 from typing import Dict, List, Tuple
 from tempfile import TemporaryDirectory
 from argparse import ArgumentParser

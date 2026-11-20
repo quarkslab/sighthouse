@@ -1,3 +1,35 @@
+"""
+The GhidraAnalyzer package allows you to analyze binaries and extract function signatures using two
+different function signature schemes: FunctionID and BSim. It only parses formats that Ghidra knows
+how to load automatically: ELF, PE and Mach-O.
+
+The worker accepts the following arguments:
+```
+args:
+  urls:
+    - ...
+  bsim:
+    min_instructions: ...
+    max_instructions: ...
+  fidb:
+    min_instructions: ...
+    max_instructions: ...
+```
+
+Here is an example:
+```
+args:
+  urls:
+    - postgresql://user@bsim_postgres:5432/bsim
+  bsim:
+    min_instructions: 10
+    max_instructions: 0
+  fidb:
+    min_instructions: 2
+    max_instructions: 0
+```
+"""
+
 from typing import Any, Dict, List
 from tempfile import TemporaryDirectory
 from argparse import ArgumentParser
@@ -139,7 +171,7 @@ class GhidraAnalyzer(Analyzer):
     def do_work(self, job: Job) -> None:
         args: Dict[str, Any] = self.parse_args(job.worker_args)
         # Analyze files
-        self.log(f"Starting analysis of {job.job_data.get("hash")}")
+        self.log(f"Starting analysis of {job.job_data.get('hash')}")
         # Run ghidra script
         script_path = (
             Path(__file__).parent.resolve()

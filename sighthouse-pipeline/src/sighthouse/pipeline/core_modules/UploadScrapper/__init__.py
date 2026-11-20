@@ -1,3 +1,28 @@
+"""
+The UploadScrapper is a generic upload worker that allows you to send a given directory into the
+pipeline. Its main purpose is to send already compiled programs directly to the analyzers.
+
+The worker accepts the following arguments:
+```
+args:
+  files:
+    - path: ...
+      origin: ...
+      name: ...
+      version: ...
+```
+
+Here is an example:
+```
+args:
+  files:
+    - path: /lib/x86_64-linux-gnu/libcrypto.so.3
+      origin: https://github.com/openssl/openssl
+      name: libcrypto
+      version: 3.0.22
+```
+"""
+
 from argparse import ArgumentParser
 from pathlib import Path
 from tempfile import TemporaryDirectory

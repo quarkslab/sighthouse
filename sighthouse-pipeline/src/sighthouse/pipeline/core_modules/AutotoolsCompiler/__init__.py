@@ -1,3 +1,30 @@
+"""
+AutotoolsCompiler is a compiler worker that will attempt to build projects
+using the Autotools build suite. It starts by running `autogen.sh`/`autoreconf`, then
+runs `./configure`, and finally runs `make`.
+
+The worker accepts the following arguments:
+```
+args:
+  compiler_variants:
+    <name>:
+      cc: ...
+      cflags: ...
+      configure_extra_args: ...
+```
+Additional arguments can be passed to `./configure` using `configure_extra_args`.
+
+Here is an example:
+```
+args:
+  compiler_variants:
+    arm-O1:
+      cc: arm-linux-gnueabi-gcc
+      cflags: -O1
+      configure_extra_args: --host=arm-linux-gnueabi
+```
+"""
+
 from typing import Dict, List, Tuple
 from tempfile import TemporaryDirectory
 from argparse import ArgumentParser

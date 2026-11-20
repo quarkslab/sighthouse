@@ -1,3 +1,11 @@
+"""
+The PlatformIoCompiler is a compiler relying on the PlatformIO build system (`pio`).
+PlatformIO is a software aggregator platform for embedded projects. It allows you
+to describe the compilation steps using a `platformio.ini` file.
+
+The worker doesn't need any arguments, but it requires projects with a `platformio.ini` file.
+"""
+
 from tempfile import TemporaryDirectory
 from argparse import ArgumentParser
 from pathlib import Path

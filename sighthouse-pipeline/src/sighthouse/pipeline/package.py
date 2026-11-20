@@ -10,6 +10,7 @@ import tempfile
 import tarfile
 import shutil
 import sys
+import ast
 
 import yaml
 from sighthouse.core.utils import get_appdata_dir, run_process
@@ -85,6 +86,18 @@ class PackageMetadata:
         self.version = version
         self.requirements = requirements or []
         self.path = path
+
+    @property
+    def doc(self) -> Optional[str]:
+        """Return the module documentation"""
+        if self.path is None:
+            return None
+
+        with open(self.path / "__init__.py", "r") as fp:
+            tree = ast.parse(fp.read())
+            return ast.get_docstring(tree)
+
+        return None
 
     def __eq__(self, other: Any) -> bool:
         """Compare this object to something else"""
@@ -354,7 +367,7 @@ class PackageLoader:
 
         Args:
             source (Path | str): Path to a package, or the name of a bundled
-                                 core module (e.g. "GhidraAnalyzer").
+                                 core module (e.g. "Ghidra Analyzer").
 
         Returns:
             Path: The resolved path. If neither the path nor a matching bundled
@@ -365,12 +378,14 @@ class PackageLoader:
         if source.exists():
             return source
 
-        bundled = self.CORE_MODULES_PATH / source.name
-        if bundled.exists():
-            self._logger.debug(
-                f"Resolved '{source}' to bundled core module '{bundled}'"
-            )
-            return bundled
+        for path in self.CORE_MODULES_PATH.iterdir():
+            if path.is_dir():
+                meta = self.load_metadata(path)
+                if meta and meta.name == str(source):
+                    self._logger.debug(
+                        f"Resolved '{source}' to bundled core module '{meta.path}'"
+                    )
+                    return meta.path or source
 
         return source
 
@@ -528,7 +543,10 @@ class PackageLoader:
         Args:
             name (str): Package name.
             args (Optional[List[str]]): The argument for the package
-            job: (Optional[Job]): Optional job data to process
+            job (Optional[Job]): Optional job data to process
+
+        Returns:
+            bool: True if the package could be run, False otherwise
         """
         meta = self.get_metadata(name)
         if meta is not None and meta.path is not None:
@@ -540,6 +558,12 @@ class PackageLoader:
     def uninstall(self, name: str) -> bool:
         """
         Uninstall the given package if it exists.
+
+        Args:
+            name (str): The name of the package to install
+
+        Returns:
+            bool: True if the package could be uninstalled, False otherwise
         """
         meta = self.get_metadata(name)
         if meta and meta.path:
@@ -548,15 +572,48 @@ class PackageLoader:
 
         return False
 
-    def list_modules(self) -> List[PackageMetadata]:
+    def is_installed(self, meta: PackageMetadata) -> bool:
+        """
+        Check if the given package is installed.
+
+        Args:
+            meta (PackageMetadata): The metadata of the package to check
+
+        Returns:
+            bool: True if the package is installed, False otherwise
+        """
+        if meta.path is None:
+            return False
+
+        # Unsure that the package meta is located in one of the installer directory
+        # and that when we load the metadata, it correspond to the given metadata.
+        for p in self._paths:
+            if meta.path.is_relative_to(p):
+                other = self.load_metadata(meta.path)
+                return other == meta
+        return False
+
+    def list_modules(self, installed_only: bool = True) -> List[PackageMetadata]:
         """
         Return list of PackageMetadata objects without fully loading modules.
+
+        Args:
+            installed_only (bool): List only installed packages
+
+        Returns:
+            List[PackageMetadata]: List of metadata about all the packages
         """
         results: List[PackageMetadata] = []
-        for p in self._paths:
+        paths = list(self._paths)
+        if not installed_only and self.CORE_MODULES_PATH not in paths:
+            # Also add core packages
+            paths.append(self.CORE_MODULES_PATH)
+
+        for p in paths:
             for path in p.iterdir():
                 if path.is_dir():
                     meta = self.load_metadata(path)
-                    if meta:
+                    if meta and meta not in results:
                         results.append(meta)
+
         return results

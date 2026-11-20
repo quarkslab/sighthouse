@@ -7,6 +7,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+from sighthouse.pipeline.package import PackageMetadata
+
 from sighthouse.pipeline.cli import (
     run_package_cmd_handler,
     install_package_cmd_handler,
@@ -181,16 +183,15 @@ class TestSimplePackageHandlers(unittest.TestCase):
 
     def test_list_prints_each_package(self, MockLoader):
         loader = MockLoader.return_value
-        meta = MagicMock()
-        meta.__str__ = lambda self: "pkgA v1.0"
-        meta.description = "the A package"
+        meta = PackageMetadata(name="pkgA", version="v1.0", description="the A package")
         loader.list_modules.return_value = [meta]
-        args = Namespace(debug=False)
+        args = Namespace(debug=False, all=False)
         buf = io.StringIO()
         with redirect_stdout(buf):
             list_package_cmd_handler(None, args, [])
         out = buf.getvalue()
-        self.assertIn("pkgA v1.0", out)
+        self.assertIn("pkgA", out)
+        self.assertIn("v1.0", out)
         self.assertIn("the A package", out)
 
     def test_export_uses_package_name_when_no_output(self, MockLoader):

@@ -1,3 +1,35 @@
+"""
+The GitScrapper worker allows you to download Git repositories and push them into the pipeline.
+The worker will attempt to clone the given repositories (repositories are assumed to be reachable
+without authentication) and then send a copy of the source directory into the pipeline for
+each branch. Branches must correspond to a valid commit or tag, suitable
+for `git checkout <branch>`.
+
+The worker accepts the following arguments:
+```
+args:
+  repositories:
+    - name: ...
+      url: ...
+      submodule: ...
+      branches:
+        - ...
+```
+
+Here is an example:
+```
+args:
+  repositories:
+    - name: mbedTLS
+      url: https://github.com/Mbed-TLS/mbedtls
+      submodule: true
+      branches:
+        - mbedtls-4.0.0
+        - mbedtls-3.0.0
+        - mbedtls-2.0.0
+```
+"""
+
 from argparse import ArgumentParser
 from pathlib import Path
 from tempfile import TemporaryDirectory

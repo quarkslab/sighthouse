@@ -1,3 +1,33 @@
+"""
+CmakeCompiler is a compiler worker that will attempt to build CMake-based
+projects, mainly targeting C/C++ codebases.
+
+The worker accepts the following arguments:
+```
+args:
+  compiler_variants:
+    <name>:
+      cc: ...
+      cflags: ...
+      cxx: ...
+      cxxflags: ...
+      cmake_extra_args: ...
+```
+Additional arguments can be passed to `cmake` using `cmake_extra_args`.
+
+Here is an example:
+```
+args:
+  compiler_variants:
+    x86-O0:
+      cc: gcc
+      cflags: -O0
+      cxx: g++
+      cxxflags: -std=c++17
+      cmake_extra_args: -G Ninja -DBUILD_SHARED_LIBS=ON
+```
+"""
+
 from typing import Dict, List, Tuple, Optional
 from tempfile import TemporaryDirectory
 from argparse import ArgumentParser
