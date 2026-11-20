@@ -8,7 +8,7 @@ from argparse import Namespace, ArgumentParser
 from sighthouse.cli import SightHouseCommandLine
 
 from sighthouse.client.install_binja import main as binja_main
-from sighthouse.client.install_ida import main as ida_main
+from sighthouse.client.install_ida import InstallError, main as ida_main
 from sighthouse.client.install_ghidra import main as ghidra_main
 from sighthouse.client.SightHouseClient import AnalysisOptions
 from sighthouse.client.SightHouseClientStandalone import SightHouseClientStandalone
@@ -25,16 +25,21 @@ def _install_binja() -> None:
     binja_main()
 
 
-def _install_ida(ida_dir: Optional[str]) -> None:
+def _install_ida(
+    ida_dir: Optional[str],
+    python: Optional[str],
+    break_system_packages: bool,
+    dry_run: bool,
+) -> None:
+    # The IDA directory is optional: the plugin goes in the IDA user directory
+    # and the Python interpreter is detected from the idapyswitch settings.
     resolved = ida_dir or os.environ.get(_ENV_IDA_DIR)
-    if not resolved:
-        raise ValueError(
-            f"IDA directory is required. Pass --ida-dir or set ${_ENV_IDA_DIR}."
-        )
-    path = pathlib.Path(resolved).expanduser().resolve()
-    if not path.exists():
-        raise FileNotFoundError(f"IDA directory not found: {path}")
-    ida_main(str(path))
+    if resolved:
+        path = pathlib.Path(resolved).expanduser().resolve()
+        if not path.exists():
+            raise FileNotFoundError(f"IDA directory not found: {path}")
+        resolved = str(path)
+    ida_main(resolved, python, break_system_packages, dry_run)
 
 
 def _install_ghidra(ghidra_install_dir: Optional[str]) -> None:
@@ -64,19 +69,13 @@ def install_sre_cmd_handler(self, args: Namespace, remaining: List[str]) -> None
             _install_binja()
 
         elif sre == "ida":
-            if not args.ida_dir:
-                print("[!] --ida-dir is required for IDA installation.")
-                return
-            print(f"[+] Installing SightHouse IDA client into {args.ida_dir} ...")
-            _install_ida(args.ida_dir)
+            print("[+] Installing SightHouse IDA client ...")
+            _install_ida(
+                args.ida_dir, args.python, args.break_system_packages, args.dry_run
+            )
 
         elif sre == "ghidra":
-            if not args.ghidra_install_dir:
-                print("[!] --ghidra-install-dir is required for Ghidra installation.")
-                return
-            print(
-                f"[+] Installing SightHouse Ghidra client into {args.ghidra_install_dir} ..."
-            )
+            print("[+] Installing SightHouse Ghidra client ...")
             _install_ghidra(args.ghidra_install_dir)
 
         else:
@@ -86,7 +85,7 @@ def install_sre_cmd_handler(self, args: Namespace, remaining: List[str]) -> None
 
         print("[+] Installation complete.")
 
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, ValueError, InstallError) as exc:
         print(f"[!] {exc}")
 
 
@@ -149,7 +148,8 @@ def add_to_cli(app: SightHouseCommandLine) -> None:
         dest="ghidra_install_dir",
         metavar="PATH",
         default=None,
-        help="Path to the Ghidra installation directory (required for 'ghidra').",
+        help="Path to the Ghidra installation directory (required for 'ghidra', "
+        f"defaults to ${_ENV_GHIDRA_INSTALL_DIR}).",
     )
 
     install_parser.add_argument(
@@ -157,7 +157,30 @@ def add_to_cli(app: SightHouseCommandLine) -> None:
         dest="ida_dir",
         metavar="PATH",
         default=None,
-        help="Path to the IDA Pro installation directory (required for 'ida').",
+        help="Path to the IDA Pro installation directory (optional for 'ida', "
+        f"defaults to ${_ENV_IDA_DIR}).",
+    )
+    install_parser.add_argument(
+        "--python",
+        dest="python",
+        metavar="PATH",
+        default=None,
+        help="Python interpreter used by IDA ('ida' only, default: detected from "
+        "the idapyswitch settings).",
+    )
+    install_parser.add_argument(
+        "--break-system-packages",
+        dest="break_system_packages",
+        default=False,
+        action="store_true",
+        help="Allow pip to install into an externally managed Python ('ida' only).",
+    )
+    install_parser.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        default=False,
+        action="store_true",
+        help="Print what would be done without changing anything ('ida' only).",
     )
 
     # -- analyze sub-command -------------------------------------------------

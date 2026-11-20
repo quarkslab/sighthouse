@@ -52,9 +52,12 @@ python .\src\sighthouse\client\install_ghidra.py %GHIDRA_INSTALL_DIR%
 goto :eof
 
 :install_ida
-:: Install Sighthouse Ida client on your system
-call :check-env-ida
-python .\src\sighthouse\client\install_ida.py %IDA_DIR%
+:: Install Sighthouse Ida client on your system (IDA_DIR is optional)
+if "%IDA_DIR%"=="" (
+    python .\src\sighthouse\client\install_ida.py
+) else (
+    python .\src\sighthouse\client\install_ida.py --ida-dir "%IDA_DIR%"
+)
 goto :eof
 
 :install_binja
@@ -65,13 +68,6 @@ goto :eof
 :check-env-ghidra
 if "%GHIDRA_INSTALL_DIR%"=="" (
     echo [!] GHIDRA_INSTALL_DIR is undefined
-    exit /b 1
-)
-goto :eof
-
-:check-env-ida
-if "%IDA_DIR%"=="" (
-    echo [!] IDA_DIR is undefined
     exit /b 1
 )
 goto :eof

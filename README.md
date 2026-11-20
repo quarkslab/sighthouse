@@ -39,7 +39,7 @@ SightHouse is split into three components, each serving a different need:
 
 | Your goal | Component to install | Get started |
 | --- | --- | --- |
-| Query a binary for known functions from your disassembler | **SRE Clients** | [Client quickstart](https://quarkslab.github.io/sighthouse/clients/quickstart/) |
+| Query a binary for known functions from your disassembler | **SRE Clients** | [Client guide](https://quarkslab.github.io/sighthouse/clients/) |
 | Host your own SightHouse server against an existing database | **Frontend** | [Frontend quickstart](https://quarkslab.github.io/sighthouse/frontend/quickstart/) |
 | Build your own signature database and signatures | **Signature Pipeline** | [Pipeline quickstart](https://quarkslab.github.io/sighthouse/signature-pipeline/quickstart/) |
 
@@ -61,8 +61,8 @@ pip install sighthouse[all]       # Everything
 After installing `sighthouse-client`, register the plugin for your disassembler:
 
 ```bash
-# IDA
-sighthouse client install ida --ida-dir /path/to/ida_dir
+# IDA (installs into the Python selected with idapyswitch)
+sighthouse client install ida
 
 # Ghidra (requires Ghidra 11.3+ with pyGhidra)
 sighthouse client install ghidra --ghidra-install-dir /path/to/ghidra
@@ -74,7 +74,7 @@ sighthouse client install binja
 > **Ghidra note:** the plugin runs on pyGhidra, so launch Ghidra with
 > `$GHIDRA_INSTALL_DIR/support/pyghidraRun` rather than the classic launcher.
 
-See the [client installation guide](https://quarkslab.github.io/sighthouse/clients/installation/)
+See the [client guide](https://quarkslab.github.io/sighthouse/clients/)
 for per-tool details and install-from-source options.
 
 ### From source
@@ -108,13 +108,13 @@ disassembler and run the plugin:
   for "SightHouse"), then run it from the *Plugins* menu. Matches are added as tags.
 
 Full walkthroughs with screenshots are in the
-[client quickstart](https://quarkslab.github.io/sighthouse/clients/quickstart/).
+[client guide](https://quarkslab.github.io/sighthouse/clients/).
 
 ## Documentation
 
 Full documentation is available at **[quarkslab.github.io/sighthouse](https://quarkslab.github.io/sighthouse/)**, including:
 
-- [Client installation](https://quarkslab.github.io/sighthouse/clients/installation/) and [quickstart](https://quarkslab.github.io/sighthouse/clients/quickstart/)
+- [SRE clients](https://quarkslab.github.io/sighthouse/clients/): [IDA](https://quarkslab.github.io/sighthouse/clients/ida/), [Ghidra](https://quarkslab.github.io/sighthouse/clients/ghidra/), [Binary Ninja](https://quarkslab.github.io/sighthouse/clients/binja/)
 - [Frontend installation](https://quarkslab.github.io/sighthouse/frontend/installation/) and [quickstart](https://quarkslab.github.io/sighthouse/frontend/quickstart/)
 - [Signature pipeline](https://quarkslab.github.io/sighthouse/signature-pipeline/quickstart/), [how it works](https://quarkslab.github.io/sighthouse/signature-pipeline/how/), and [writing custom modules](https://quarkslab.github.io/sighthouse/signature-pipeline/dev/)
 - [API reference](https://quarkslab.github.io/sighthouse/api-reference/)
