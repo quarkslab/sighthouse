@@ -16,8 +16,8 @@ env:
 
 jobs:
 
-  setup:
-    name: Install Dependencies
+  type-check:
+    name: Type Check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -25,27 +25,6 @@ jobs:
 
       - name: Install dev dependencies
         run: make install-dev
-
-      - name: Cache venv
-        uses: actions/cache/save@v4
-        with:
-          path: ./venv
-          key: ${{ github.sha }}-venv
-
-  type-check:
-    name: Type Check
-    runs-on: ubuntu-latest
-    needs: [setup]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Restore venv
-        uses: actions/cache/restore@v4
-        with:
-          path: ./venv
-          key: ${{ github.sha }}-venv
-          fail-on-cache-miss: true
 
       - name: Type check
         run: make type-check
@@ -83,7 +62,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: [setup, docker_ghidra]
+    needs: [docker_ghidra]
     permissions:
       packages: read
     steps:
@@ -97,13 +76,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Restore venv
-        uses: actions/cache/restore@v4
-        with:
-          path: ./venv
-          key: ${{ github.sha }}-venv
-          fail-on-cache-miss: true
-
       - name: Run tests
         run: |
           docker run --rm \
@@ -114,7 +86,7 @@ jobs:
             -e GHIDRA_INSTALL_DIR=/ghidra \
             --entrypoint bash \
             ${{ env.GHIDRA_IMAGE }} \
-            -c "make test"
+            -c "make install-dev && make test"
 
   docker_generation:
     name: Build & Publish Docker Image
