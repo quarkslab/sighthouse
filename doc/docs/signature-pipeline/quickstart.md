@@ -94,7 +94,7 @@ services:
       - internal-net
 
   bsim_postgres:
-    image: ghcr.io/quarkslab/sighthouse/ghidra-bsim-postgres:1.0.6
+    image: ghcr.io/quarkslab/sighthouse/ghidra-bsim-postgres:1.0.7
     hostname: bsim_postgres
     volumes:
       - ./data/postgres:/home/user/ghidra-data
@@ -108,7 +108,7 @@ services:
       - internal-net
 
   create_bsim_db_postgres:
-    image: ghcr.io/quarkslab/sighthouse/create_bsim_db:1.0.6
+    image: ghcr.io/quarkslab/sighthouse/create_bsim_db:1.0.7
     command: 'user "" bsim_postgres postgresql 5432'
     depends_on:
       bsim_postgres:
@@ -118,7 +118,7 @@ services:
       - internal-net
 
   ghidra_analyzer:
-    image: ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:1.0.6
+    image: ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:1.0.7
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GhidraAnalyzer",
@@ -141,7 +141,7 @@ services:
       - internal-net
 
   autotools_compiler:
-    image: ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:1.0.6
+    image: ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:1.0.7
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/AutotoolsCompiler",
@@ -163,7 +163,7 @@ services:
       - internal-net
 
   git_scrapper:
-    image: ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:1.0.6
+    image: ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:1.0.7
     restart: unless-stopped
     command: [
       "sighthouse-pipeline/src/sighthouse/pipeline/core_modules/GitScrapper",
@@ -185,7 +185,7 @@ services:
       - external-net
 
   create_recipe:
-    image: ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:1.0.6
+    image: ghcr.io/quarkslab/sighthouse/sighthouse-pipeline:1.0.7
     entrypoint: >
       /home/user/.local/bin/sighthouse pipeline -r s3://admin:password@rustfs:9000/uploads -w redis://redis:6379/0 start /build/pipeline.yml
     volumes:

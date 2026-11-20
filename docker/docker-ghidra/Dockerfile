@@ -1,6 +1,6 @@
 FROM eclipse-temurin:21-jdk-noble
 
-LABEL version="1.0.6"
+LABEL version="1.0.7"
 LABEL name="ghidraheadless"
 
 ENV VERSION 11.4.1_PUBLIC
