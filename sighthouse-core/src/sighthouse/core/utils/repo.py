@@ -1,6 +1,6 @@
 """Generic abstraction for storing files"""
 
-from typing import Any, Optional
+from typing import Any, Optional, List
 from pathlib import Path
 import boto3
 from botocore.config import Config
@@ -202,7 +202,7 @@ class Repo:
         else:
             raise ValueError(f"Unsupported URI scheme: {self._uri.get('type')}")
 
-    def list_directory(self, path: str | Path) -> list[str]:
+    def list_directory(self, path: str | Path) -> List[str]:
         """
         Lists all files in the specified directory from either local filesystem or S3.
 
@@ -237,11 +237,16 @@ class Repo:
         if self._uri["type"] == "s3":
             try:
                 paginator = self._client.get_paginator("list_objects_v2")
-                keys: list[str] = []
+                keys: List[str] = []
                 for page in paginator.paginate(
-                    Bucket=self._uri["dbname"], Prefix=str(path).lstrip("/")
+                    Bucket=self._uri["dbname"],
+                    Prefix=str(path).lstrip("/"),
+                    Delimiter="/",
                 ):
+                    # Files
                     keys.extend(obj["Key"] for obj in page.get("Contents", []))
+                    # Directories
+                    keys.extend(obj["Prefix"] for obj in page.get("CommonPrefixes", []))
                 return keys
             except EndpointConnectionError:
                 # @TODO: Maybe find a way to indicate the error reason
