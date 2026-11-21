@@ -337,8 +337,8 @@ else:
         PREF_KEY_BOB_ROSS,
         json.dumps(
             {
-                "title": "Experimental Algorithme to enhance matches",
-                "description": "Experimental Algorithme to enhance matches",
+                "title": "Experimental Algorithm to enhance matches",
+                "description": "Experimental Algorithm to enhance matches",
                 "type": "boolean",
                 "default": False,
                 "optional": True,
